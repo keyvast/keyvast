@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{2AA26F8F-7034-4B71-917D-7ED9547E0337}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="LocalAdmin\KVLocalAdmin.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="DatabaseServer\KVDatabaseServer.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="KVLocalAdmin">
+        <MSBuild Projects="LocalAdmin\KVLocalAdmin.dproj"/>
+    </Target>
+    <Target Name="KVLocalAdmin:Clean">
+        <MSBuild Projects="LocalAdmin\KVLocalAdmin.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="KVLocalAdmin:Make">
+        <MSBuild Projects="LocalAdmin\KVLocalAdmin.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="KVDatabaseServer">
+        <MSBuild Projects="DatabaseServer\KVDatabaseServer.dproj"/>
+    </Target>
+    <Target Name="KVDatabaseServer:Clean">
+        <MSBuild Projects="DatabaseServer\KVDatabaseServer.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="KVDatabaseServer:Make">
+        <MSBuild Projects="DatabaseServer\KVDatabaseServer.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="KVLocalAdmin;KVDatabaseServer"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="KVLocalAdmin:Clean;KVDatabaseServer:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="KVLocalAdmin:Make;KVDatabaseServer:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

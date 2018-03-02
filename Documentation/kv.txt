@@ -1,0 +1,670 @@
+
+
+                                KeyVast
+
+                           A key-value store
+
+
+
+        INTRODUCTION
+        ------------
+
+        KeyVast is a persistent key-value store. Internally it uses
+        hash trees for quick access to keys. It also features
+        a scripting language which exposes the features of the
+        store.
+
+        Logically the store is composed of a system, which
+        has multiple databases, each of which can have
+        multiple datasets.
+
+                         +----------+
+                         |  System  |
+                         +----------+
+                        /            \
+                  +----------+  +----------+
+                  | Database |  | Database |
+                  +----------+  +----------+
+                               /            \
+                         +---------+   +---------+
+                         | Dataset |   | Dataset |
+                         +---------+   +---------+
+
+        A dataset stores data values referenced by string keys.
+        A data value can itself be a dictionary of data values
+        referenced by string keys.
+
+                   +-----------+
+                   |  Dataset  |
+                   +-----------+
+                  /      |      \
+           +-----+    +-----+    +-----+
+           | Key |    | Key |    | Key |
+           +-----+    +-----+    +-----+
+              |          |          |
+           +-----+    +-----+    +-----+
+           | Val |    | Val |    | Val |
+           +-----+    +-----+    +-----+
+                                /       \
+                            +-----+   +-----+
+                            | Key |   | Key |
+                            +-----+   +-----+
+                               |          |
+                            +-----+    +-----+
+                            | Val |    | Val |
+                            +-----+    +-----+
+
+
+        KEYS
+        ----
+
+        A record key has the format:
+
+            <database> ':' <dataset> '\' <record key>
+
+        e.g.
+
+            USERS:user\1
+            USERS:name\john
+
+        When a component of a record key contains special characters,
+        the component can be quoted using double quotes, e.g.
+
+            USERS:user\"rec 1"
+            USERS:email\"john@test.com"
+
+        A record key can be extended with a field key or list index in
+        cases where the value is a dictionary or list:
+
+            [ <database> ':' ] <dataset> '\' <record key>
+                ( [ '.' <field key> ] [ '[' <list index> ']' ] )*
+
+        e.g.
+
+            USERS:user\7.email
+            USERS:user\7.addresses[0].city
+
+
+
+        VALUES
+        ------
+
+        1. SIMPLE VALUES
+
+        1.1 String
+
+        Strings are internally represented as Unicode strings.
+        In the script, string literals use double quotes, e.g
+
+            "test"
+
+        Double quotes can be escaped inside the quotes by using
+        two quotes, e.g.
+
+            "te""st"
+
+        represents the string te"st.
+
+
+        1.2 Integer
+
+        Integer values are internally represented as a 64 bit
+        Integer, e.g.
+
+            1234
+
+
+        1.3 Float
+
+        Floating point values are internally represented as
+        64 bit floating point value, e.g.
+
+            1234.5
+
+
+        1.4 Boolean
+
+        Boolean values can be 'true' and 'false' and the binary
+        operators (and, or, xor, not) can be applied to them.
+
+
+        1.5 DateTime
+
+        e.g.
+
+            DATETIME("01/01/2010 01:02:03")
+
+
+        1.6 Binary
+
+        The binary type represents a list of bytes.
+        It can be constructed using the built-in BINARY and
+        BYTE functions, e.g.
+
+            BINARY("XYZ") + BYTE(255)
+
+
+        1.7 Null
+
+        The null value is a special value that indicates no value.
+
+        If null is part of a mathematical or logical operation, the
+        result of the operation is null.
+
+
+        2. COMPOUND VALUES
+
+        2.1 Dictionary
+
+        Dictionary values hold key-value pairs where the key is
+        a string and the value can be any of the types, e.g.
+
+            {name:john,email:"john@test.com"}
+            {recidx:1}
+
+        A value can be another dictionary, e.g.
+
+            {name:john,location:{city:"NY"}}
+
+
+        2.2 List
+
+        Lists are ordered lists of any type, e.g.
+
+            [1,"2",3,true]
+
+
+
+        KEY STATEMENTS AND EXPRESSIONS
+        ------------------------------
+
+        The following key statements and expressions are provided:
+
+            INSERT <value ref> <value>
+            UPDATE <value ref> <value>
+            SELECT <value ref>
+            DELETE <value ref>
+            EXISTS <value ref>
+
+        where <value ref> is a key. It can reference a record or
+        a value.
+
+        For example, referencing a record:
+
+            INSERT db:ds\1 "Hello"
+            UPDATE db:ds\1 "world"
+            INSERT db:ds\test1 {name:"John";age:20}
+            DELETE db:ds\1
+            INSERT db:ds\test2 [1,2,3,"4"]
+
+        When the value in a record is a dictionary or a list, the
+        statements can be extended to access components of the value,
+        for example:
+
+            UPDATE db:ds\test1.name "Andile"
+            DELETE db:ds\test1.age
+            UPDATE db:ds\test2[3] 4
+
+        The insert statement for a dictionary value accepts a
+        dictionary as parameter. To reference the root dictionary,
+        append .@ to the value reference, for example:
+
+            INSERT db:ds\test1.@ {city:"NY"}
+
+
+
+        SESSION CONTEXT
+        ---------------
+
+        Sessions can switch context to a default database and/or
+        dataset.
+
+        By default no context is selected and key statements
+        and expressions need to specify the database and dataset,
+        e.g.
+
+            INSERT db:ds\1 "Hello"
+
+        Context is switched using the 'USE' statement.
+
+        When context is switched to a database, the database key
+        can be omitted from keys, e.g.
+
+            USE db
+            INSERT ds\1 "Hello"
+
+        When context is switched to a dataset, both the database
+        and dataset keys can be omitted from keys, e.g.
+
+            USE db:ds
+            INSERT 1 "Hello"
+
+        To reset context back to none, issue the USE command with
+        an asterisk, e.g.
+
+            USE *
+
+
+
+        PROCEDURES
+        ----------
+
+        Procedures can be transient or persitent.
+
+        Transient procedures exist for the lifetime of the session
+        that created them.
+
+        Persistent procedures are defined in the context of a
+        database.
+
+        Procedures can return a value to the caller using the
+        RETURN statement.
+
+        RETURN causes the procedure to exit execution.
+
+        Example of persitent procedure:
+
+            CREATE PROCEDURE DB:proc1(@val1, @val2)
+            BEGIN
+              SET @temp = @val1 + @val2
+              RETURN @temp
+            END
+
+            USE DB
+
+            EVAL proc1(1, 2)
+
+            DROP PROCEDURE DB:proc1
+
+        A transient procedure is defined without a database
+        reference, e.g.
+
+            CREATE PROCEDURE proc2(@val1, @val2)
+            BEGIN
+              SET @temp = @val1 + @val2
+              RETURN @temp
+            END
+
+
+
+        BUILT-IN FUNCTIONS
+        ------------------
+
+        LEN       Returns length of string or list.
+        INTEGER   Cast parameter to integer.
+        FLOAT     Cast parameter to float.
+        STRING    Cast parameter to string.
+        DATETIME  Cast parameter to date/time.
+        BYTE      Cast parameter to integer and construct binary value
+                  of length one.
+        BINARY    Cast parameter to binary.
+        CHAR      Cast parameter to integer and construct string value
+                  of length one.
+        REPLACE   Find and replace on a string.
+        GETDATE   Current date and time.
+        ISNULL    Use alternative expression if expression is null.
+        LOWER     Returns lower case string.
+        UPPER     Returns upper case string.
+        TRIM      Returns trimmed string.
+        ROUND     Returns float rounded to integer.
+
+
+
+        EXPRESSIONS
+        -----------
+
+        1. Mathematical operators
+
+        The usual mathematical operators (plus, minus, multiply and
+        divide) are available for numeric values.
+
+        When plus is applied to string values, the strings are
+        concatenated.
+
+
+        2. Comparison operators
+
+        The comparison operators are:
+
+            =  <>  <  >  <= >=
+
+
+        3. Logical operators
+
+        The logical operators available are:
+
+            AND  OR  XOR  NOT
+
+
+        4. If expression
+
+        If can be used in a value expression, e.g.
+
+            SET @a = IF @x = @y THEN 1 ELSE 0
+
+
+
+        STATEMENTS
+        ----------
+
+        1. If statement
+
+        For example:
+
+            IF @a = @b THEN
+                SET @c = 1
+            ELSE
+                BEGIN
+                  SET @c = 2
+                  SET @d = 3
+                END
+
+
+        2. While statement
+
+        The while statement executes a block of code while a
+        condition is true.
+
+        For example:
+
+            WHILE @a < @b
+            BEGIN
+                SET @a = @a + 1
+            END
+
+
+        3. Database and dataset management statements
+
+        Databases and datasets can be created and destroyed using
+        the CREATE and DROP statements, e.g.
+
+            CREATE DATABASE DB
+            CREATE DATASET DB:ds
+
+            DROP DATASET DB:ds
+            DROP DATABASE DB
+
+
+        4. Scope statements
+
+        SET is used to assign a value to a variable in the
+        current scope, e.g.
+
+            SET @myvar = "Hello"
+
+        Variables can be accessed in any expression, e.g.
+
+            SET @myvar = @myvar + " world"
+
+
+        5. Iteration statements
+
+        If needed, all records in a dataset can be iterated.
+        The iterator is stored in a local variable which resolves
+        to true while there are more records available.
+
+        For example:
+
+            ITERATE_RECORDS DB:ds @iter
+            WHILE @iter
+            BEGIN
+              SET @key = ITERATOR_KEY @iter
+              SET @val = ITERATOR_VALUE @iter
+              ITERATE_NEXT @iter
+            END
+
+
+
+        TOOLS
+        -----
+
+        1. KVLocalAdmin
+
+        KVLocalAdmin allows for the creation and deletion
+        of systems.
+
+        Create a new system, e.g.
+
+            KVLocalAdmin create c:\temp my_system
+
+        Delete a system, e.g.
+
+            KVLocalAdmin delete c:\temp my_system
+
+        Open a system and allow issuing of script commands
+        from the terminal, e.g.
+
+            KVLocalAdmin open c:\temp my_system
+
+
+        2. KVDatabaseServer
+
+        KVDatabaseServer allows for running of a server
+        for a system.
+
+        For a full list of available parameters, run with --help:
+
+            KVDatabaseServer --help
+
+        For example to run a database server for a system in
+        c:\temp named my_system on TCP port 7950:
+
+            KVDatabaseServer c:\temp my_system --daemon
+            --tcpport=7950
+
+        Telnet to the database server and issue commands, e.g.
+
+            telnet 127.0.0.1 7950
+
+            >CREATE DATABASE my_database
+            $nil
+            >CREATE DATASET my_database:my_dataset
+            $nil
+
+        To exit the session, issue the 'exit' command at the server
+        prompt.
+
+        To stop the server, issue the 'stop' command at the server
+        prompt, e.g.
+
+            >stop
+            $shuttingdown
+
+
+
+        SCRIPT FORMAL SPECIFICATION
+        ---------------------------
+
+        <command> ::= <select expression> | ( <statement> [ ';' ] )
+
+        <value ref> ::= <record ref> | <field ref>
+
+        <record ref> ::= <dataset ref> '\' <record key>
+
+        <dataset ref> ::= [ <database name> ':' ] <dataset name>
+
+        <field ref> ::= <record ref>
+            ( '.' <field name> | '[' <expression> ']' )+
+
+        <database name> ::= <key>
+
+        <dataset name> ::= <key>
+
+        <record key> ::= <key>
+
+        <field ref> ::= <identifier>
+
+        <key> ::= <ext identifier> | <quoted identifier>
+
+        <ext identifier> ::= ( <identifier char> | <non reserved char> )+
+
+        <quoted identifier> ::= '"' <string> '"'
+
+        <statement> ::=
+            <use statement> |
+            <create database statement> |
+            <create dataset statement> |
+            <drop database statement> |
+            <drop dataset statement> |
+            <drop procedure statement> |
+            <insert statement> |
+            <delete statement> |
+            <update statement> |
+            <if statement> |
+            <block statement> |
+            <set statement> |
+            <eval statement> |
+            <exec statement> |
+            <while statement> |
+            <create procedure statement> |
+            <return statement> |
+            <iterate statement> |
+            <iterate next statement>
+
+        <use statement> ::= 'USE' <dataset ref>
+
+        <create database statement> ::= 'CREATE DATABASE' <database name>
+
+        <create dataset statement> ::= 'CREATE DATASET' <dataset ref>
+
+        <drop database statement> ::= 'DROP DATABASE' <database name>
+
+        <drop dataset statement> ::= 'DROP DATASET' <dataset ref>
+
+        <drop procedure statement> ::= 'DROP PROCEDURE'
+            <identifier> ':' <identifier>
+
+        <insert statement> ::= 'INSERT' <value ref> <value>
+
+        <delete statement> ::= 'DELETE' <value ref>
+
+        <update statement> ::= 'UPDATE' <value ref> <value>
+
+        <if statement> ::= 'IF' <expression> 'THEN' <statement>
+            [ 'ELSE' <statement> ]
+
+        <block statement> ::= 'BEGIN' ( <statement> ';' )* 'END'
+
+        <set statement> ::= 'SET' <identifier> '=' <expression>
+
+        <eval statement> ::= 'EVAL' <expression>
+
+        <exec statement> ::= 'EXEC' <expression>
+
+        <while statement> ::= 'WHILE' <expression> <block statement>
+
+        <create procedure statement> ::=
+            'CREATE PROCEDURE' [ <identifier> ':' ]  <identifier>
+            [ '(' ( <identifier> ( ',' <identifier> )* ) ')' ]
+            <block statement>
+
+        <return statement> ::= 'RETURN' <expression>
+
+        <iterate statement> ::=
+            'ITERATE_RECORDS' <dataset ref> <identifier>
+
+        <iterate next statement> ::=
+            'ITERATE NEXT' <identifier>
+
+        <expression> ::=
+            <literal> |
+            ( <term> )+
+
+        <literal> ::=
+            <numeric literal> |
+            <string literal> |
+            <boolean literal> |
+            <null literal>
+
+        <term> ::=
+            <factor> |
+            <plus expression> |
+            <minus expression> |
+            <or expression> |
+            <xor expression>
+
+        <factor> ::=
+            <select expression> |
+            <if expression> |
+            <identifier expression> |
+            <exists expression> |
+            <unique id expression> |
+            <iterator expression> |
+            <and expression> |
+            <multiply expression> |
+            <divide expression> |
+            <and expression> |
+            <not expression> |
+            <parenthesis expression>
+
+        <boolean literal> ::= 'true' | 'false'
+
+        <null literal> ::= 'null'
+
+        <select expression> ::= 'SELECT' <value ref>
+
+        <if expression> ::= 'IF' <expression> 'THEN' <expression>
+            'ELSE' <expression>
+
+        <identifier expression> ::= <identifier>
+            ( '.' <identifier> |
+              '[' <index expression> ']' |
+              '(' <expression list> ')' )*
+
+        <identifier> ::= <identifier start char> <identifier char>*
+
+        <identifier start char> ::= <letter> | "_" | "@"
+
+        <identifier char> ::= <letter> | "_" | "@" | <number>
+
+        <expression list> ::= <expression> ( "," <expression> )*
+
+        <index expression> ::= <expression>
+
+        <exists expression> ::= 'EXISTS' <field ref>
+
+        <unique_id expression> ::= 'UNIQUE_ID' <dataset ref>
+
+        <iterator expression> ::=
+            'ITERATOR_KEY' <identifier> |
+            'ITERATOR_VALUE' <identifier>
+
+        <and expression> ::= <expression> 'AND' <expression>
+
+        <multiply expression> ::= <expression> '*' <expression>
+
+        <divide expression> ::= <expression> '/' <expression>
+
+        <and expression> ::= <expression> 'AND' <expression>
+
+        <not expression> ::= 'NOT' <expression>
+
+        <parenthesis expression> ::= '(' <expression> ')'
+
+        <plus expression> ::= <expression> '+' <expression>
+
+        <minus expression> ::= <expression> '-' <expression>
+
+        <or expression> ::= <expression> 'OR' <expression>
+
+        <xor expression> ::= <expression> 'XOR' <expression>
+
+
+
+
+
+
+
+        AUTHOR
+        ------
+
+        David J Butler
+
+
+
+        SOURCE CODE
+        -----------
+
+        https://github.com/keyvast/keyvast
+
+
