@@ -320,7 +320,9 @@ end;
 {$ENDIF}
 
 begin
+  {$IFDEF TEST}
   kvTest.Test;
+  {$ENDIF}
   try
     ReadIniFile;
     ParseParameters;

@@ -194,7 +194,9 @@ var
   CmdS, CmdP : String;
 
 begin
+  {$IFDEF TEST}
   kvTest.Test;
+  {$ENDIF}
   try
     ParseParameters;
     if ParamHelp then
