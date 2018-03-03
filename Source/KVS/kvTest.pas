@@ -935,6 +935,12 @@ begin
   finally
     Dispose(P);
   end;
+
+  Assert(kvLevel1HashString('a', True) = $CC866A5F640543AC);
+  Assert(kvLevel1HashString('A', True) = $1EB43D47A289974);
+
+  Assert(kvLevel1HashString('a', False) = $1EB43D47A289974);
+  Assert(kvLevel1HashString('A', False) = $1EB43D47A289974);
 end;
 
 procedure Test_Hash2;

@@ -3,6 +3,7 @@
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/08  0.01  Initial version }
+{ 2018/03/02  0.02  Remove LongWord references }
 
 {$INCLUDE kvInclude.inc}
 
@@ -208,7 +209,7 @@ var
   I, J : Integer;
   Slt : PkvStringHashListSlot;
   Itm : PkvStringHashListItem;
-  Hsh : LongWord;
+  Hsh : Word32;
   SltI : Integer;
 begin
   OldList := FList;
@@ -224,7 +225,7 @@ begin
         begin
           Itm := @Slt^.List[J];
           Hsh := kvhlHashString(Itm^.Key, FCaseSensitive);
-          SltI := Hsh mod LongWord(NewSlotCount);
+          SltI := Hsh mod Word32(NewSlotCount);
           AddToSlot(SltI, Itm^.Key, Itm^.Value);
         end;
     end;
@@ -265,24 +266,24 @@ end;
 
 function TkvStringHashList.LocateItem(const Key: String; var Item: PkvStringHashListItem): Boolean;
 var
-  Hsh : LongWord;
+  Hsh : Word32;
   Slt : Integer;
 begin
   Hsh := kvhlHashString(Key, FCaseSensitive);
-  Slt := Hsh mod LongWord(FSlots);
+  Slt := Hsh mod Word32(FSlots);
   Result := LocateItemIndexBySlot(Slt, Key, Item) >= 0;
 end;
 
 procedure TkvStringHashList.Add(const Key: String; const Value: TObject);
 var
-  Hsh : LongWord;
+  Hsh : Word32;
   Slt : Integer;
   Itm : PkvStringHashListItem;
 begin
   if FCount = FSlots * kvStringHashList_TargetItemsPerSlot then
     ExpandSlots(FSlots * kvStringHashList_SlotExpandFactor);
   Hsh := kvhlHashString(Key, FCaseSensitive);
-  Slt := Hsh mod LongWord(FSlots);
+  Slt := Hsh mod Word32(FSlots);
   if not FAllowDuplicates then
     if LocateItemBySlot(Slt, Key, Itm) then
       raise EkvStringHashList.CreateFmt('Duplicate key: %s', [Key]);
@@ -339,7 +340,7 @@ end;
 
 procedure TkvStringHashList.DeleteKey(const Key: String);
 var
-  Hsh : LongWord;
+  Hsh : Word32;
   SltIdx : Integer;
   ItmIdx : Integer;
   Itm : PkvStringHashListItem;
@@ -349,7 +350,7 @@ var
   I : Integer;
 begin
   Hsh := kvhlHashString(Key, FCaseSensitive);
-  SltIdx := Hsh mod LongWord(FSlots);
+  SltIdx := Hsh mod Word32(FSlots);
   Slt := @FList[SltIdx];
   AllowDup := FAllowDuplicates;
   First := True;
