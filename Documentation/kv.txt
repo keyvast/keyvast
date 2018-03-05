@@ -11,8 +11,8 @@
 
         KeyVast is a persistent key-value store. Internally it uses
         hash trees for quick access to keys. It also features
-        a scripting language which exposes the features of the
-        store.
+        a scripting language, KQL (Key Query Language), which
+        exposes and extends the features of the store.
 
         Logically the store is composed of a system, which
         has multiple databases, each of which can have
@@ -31,8 +31,6 @@
                          +---------+   +---------+
 
         A dataset stores data values referenced by string keys.
-        A data value can itself be a dictionary of data values
-        referenced by string keys.
 
                    +-----------+
                    |  Dataset  |
@@ -45,20 +43,35 @@
            +-----+    +-----+    +-----+
            | Val |    | Val |    | Val |
            +-----+    +-----+    +-----+
-                                /       \
-                            +-----+   +-----+
-                            | Key |   | Key |
-                            +-----+   +-----+
-                               |          |
-                            +-----+    +-----+
-                            | Val |    | Val |
-                            +-----+    +-----+
+
+        A data value can itself be a dictionary of data values
+        referenced by string keys, i.e.
+
+                   +-----------+
+                   |  Dataset  |
+                   +-----------+
+                  /      |      \
+           +-----+    +-----+    +-----+
+           | Key |    | Key |    | Key |
+           +-----+    +-----+    +-----+
+              |          |          |
+           +-----+    +-----+    +------------+
+           | Val |    | Val |    | Dictionary |
+           +-----+    +-----+    +------------+
+                                    /       \
+                                +-----+    +-----+
+                                | Key |    | Key |
+                                +-----+    +-----+
+                                   |          |
+                                +-----+    +-----+
+                                | Val |    | Val |
+                                +-----+    +-----+
 
 
         KEYS
         ----
 
-        A record key has the format:
+        A fully specified record key has the format:
 
             <database> ':' <dataset> '\' <record key>
 
@@ -67,8 +80,9 @@
             USERS:user\1
             USERS:name\john
 
-        When a component of a record key contains special characters,
-        the component can be quoted using double quotes, e.g.
+        When an element of a fully specified record key contains
+        special characters, the element can be quoted using
+        double quotes, e.g.
 
             USERS:user\"rec 1"
             USERS:email\"john@test.com"
@@ -83,6 +97,35 @@
 
             USERS:user\7.email
             USERS:user\7.addresses[0].city
+
+        A record key can also be sub divided to form a path of
+        folders. A folder is a container that can hold other keys
+        and folders:
+
+                   +-----------+
+                   |  Dataset  |
+                   +-----------+
+                  /      |      \
+           +-----+    +-----+    +-----+
+           | Key |    | Key |    | Key |
+           +-----+    +-----+    +-----+
+              |          |          |
+           +-----+    +-----+    +--------+
+           | Val |    | Val |    | Folder |
+           +-----+    +-----+    +--------+
+                                  /       \
+                              +-----+    +-----+
+                              | Key |    | Key |
+                              +-----+    +-----+
+                                 |          |
+                              +-----+    +-----+
+                              | Val |    | Val |
+                              +-----+    +-----+
+
+        Folders are delimited with a slash "/" character, e.g.
+
+            USERS:user\webusers/active/1
+            USERS:user\webusers/info/count
 
 
 
@@ -152,7 +195,7 @@
         result of the operation is null.
 
 
-        2. COMPOUND VALUES
+        2. COMPOSITE VALUES
 
         2.1 Dictionary
 
@@ -174,6 +217,13 @@
             [1,"2",3,true]
 
 
+        2.3 Set
+
+        Sets are unordered lists of strings, e.g.
+
+            SETOF(["a","b","c"])
+
+
 
         KEY STATEMENTS AND EXPRESSIONS
         ------------------------------
@@ -185,9 +235,9 @@
             SELECT <value ref>
             DELETE <value ref>
             EXISTS <value ref>
+            MKPATH <record ref>
 
-        where <value ref> is a key. It can reference a record or
-        a value.
+        <value ref> references a record or a value.
 
         For example, referencing a record:
 
@@ -198,7 +248,7 @@
             INSERT db:ds\test2 [1,2,3,"4"]
 
         When the value in a record is a dictionary or a list, the
-        statements can be extended to access components of the value,
+        statements can be extended to access elements of the value,
         for example:
 
             UPDATE db:ds\test1.name "Andile"
@@ -290,23 +340,48 @@
         BUILT-IN FUNCTIONS
         ------------------
 
-        LEN       Returns length of string or list.
-        INTEGER   Cast parameter to integer.
-        FLOAT     Cast parameter to float.
-        STRING    Cast parameter to string.
-        DATETIME  Cast parameter to date/time.
-        BYTE      Cast parameter to integer and construct binary value
-                  of length one.
-        BINARY    Cast parameter to binary.
-        CHAR      Cast parameter to integer and construct string value
-                  of length one.
-        REPLACE   Find and replace on a string.
-        GETDATE   Current date and time.
-        ISNULL    Use alternative expression if expression is null.
-        LOWER     Returns lower case string.
-        UPPER     Returns upper case string.
-        TRIM      Returns trimmed string.
-        ROUND     Returns float rounded to integer.
+        Numeric
+
+            INTEGER(x)   Constructs integer from x.
+            FLOAT(x)     Constructs float from x.
+            ROUND(x)     Returns float x rounded to integer.
+
+        String
+
+            STRING(x)    Constructs string from x.
+            LOWER(x)     Returns lower case string x.
+            UPPER(x)     Returns upper case string x.
+            TRIM(x)      Returns string x trimmed.
+            REPLACE(s,f,r)
+                         Finds string f in s and replace with r.
+            INDEXOF(f,s)
+                         Returns index of sub string f in
+                         string s.
+            SUBSTRING(s,i,l)
+                         Returns sub string from string s
+                         starting at index i of length l.
+            CHAR(x)      Constructs string value of length one from
+                         integer x Unicode character.
+
+        Date
+
+            DATETIME(x)  Constructs date/time from string parameter.
+            GETDATE()    Current date and time.
+
+        Binary
+
+            BYTE(x)      Constructs binary value of length one from
+                         byte value x.
+            BINARY(x)    Constructs binary value from parameter.
+
+        Various
+
+            LEN(x)       Returns length of string or list x.
+            ISNULL(x,y)
+                         Use alternative expression y if
+                         expression x is null.
+            SETOF(x)     Constructs set value from list of
+                         strings x.
 
 
 
@@ -341,6 +416,13 @@
         If can be used in a value expression, e.g.
 
             SET @a = IF @x = @y THEN 1 ELSE 0
+
+
+        5. In expression
+
+        In returns true if a value exists in a collection, e.g.
+
+            SET @a = "a" IN SETOF(["a","b"])
 
 
 
@@ -472,8 +554,8 @@
 
 
 
-        SCRIPT FORMAL SPECIFICATION
-        ---------------------------
+        SCRIPT FORMAL SYNTAX SPECIFICATION
+        ----------------------------------
 
         <command> ::= <select expression> | ( <statement> [ ';' ] )
 
@@ -510,6 +592,7 @@
             <insert statement> |
             <delete statement> |
             <update statement> |
+            <mkpath statement> |
             <if statement> |
             <block statement> |
             <set statement> |
@@ -539,6 +622,8 @@
         <delete statement> ::= 'DELETE' <value ref>
 
         <update statement> ::= 'UPDATE' <value ref> <value>
+
+        <mkpath statement> ::= 'MKPATH' <record ref>
 
         <if statement> ::= 'IF' <expression> 'THEN' <statement>
             [ 'ELSE' <statement> ]
