@@ -206,7 +206,7 @@ var
   VS : TkvStringValue;
   Va : AkvValue;
   I : Integer;
-  S : String;
+  S, T : String;
   It : TkvDatasetIterator;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 : LongWord;
@@ -388,6 +388,20 @@ begin
       Ds.DeleteRecord(S);
       Assert(not Ds.RecordExists(S));
       Va.Free;
+      // long key - growing size
+      S := '';
+      for I := 1 to 2048 do
+        begin
+          S := S + 'x';
+          VI.Value := 50;
+          Ds.AddRecord(S, VI);
+          Assert(Ds.RecordExists(S));
+          Va := Ds.GetRecord(S);
+          Assert(Va.AsString = '50');
+          Ds.DeleteRecord(S);
+          Assert(not Ds.RecordExists(S));
+          Va.Free;
+        end;
       // long value
       S := '1234567890123456789012345678901234567890';
       VS.Value := S;
@@ -418,6 +432,59 @@ begin
       Ds.SetRecord('longv', VS);
       Va := Ds.GetRecord('longv');
       Assert(Va.AsString = S);
+      Va.Free;
+      // long value - grow and shrink
+      S := '';
+      for I := 1 to 4096 do
+        begin
+          VS.Value := S;
+          Ds.SetRecord('longv', VS);
+          Va := Ds.GetRecord('longv');
+          Assert(Va.AsString = S);
+          Va.Free;
+          S := S + '.';
+        end;
+      for I := 1 to 4096 do
+        begin
+          Delete(S, 1, 1);
+          VS.Value := S;
+          Ds.SetRecord('longv', VS);
+          Va := Ds.GetRecord('longv');
+          Assert(Va.AsString = S);
+          Va.Free;
+        end;
+      // append short and long
+      S := '';
+      VS.AsString := '';
+      Ds.AddRecord('append', VS);
+      for I := 1 to 4096 do
+        begin
+          VS.AsString := '.';
+          Ds.AppendRecord('append', VS);
+          Va := Ds.GetRecord('append');
+          S := S + '.';
+          Assert(Va.AsString = S);
+          Va.Free;
+      end;
+      Ds.DeleteRecord('append');
+      // append long and long
+      VS.AsString := '';
+      Ds.AddRecord('append', VS);
+      S := '';
+      for I := 1 to 500 do
+        S := S + '1234567890';
+      VS.AsString := S;
+      Ds.AppendRecord('append', VS);
+      Va := Ds.GetRecord('append');
+      Assert(Va.AsString = S);
+      Va.Free;
+      T := '';
+      for I := 1 to 500 do
+        T := T + '123.567890';
+      VS.AsString := T;
+      Ds.AppendRecord('append', VS);
+      Va := Ds.GetRecord('append');
+      Assert(Va.AsString = S + T);
       Va.Free;
       // close database
       Sys.Close;
@@ -1075,6 +1142,43 @@ begin
     Exec('DELETE 2');
     Exec('DELETE 3');
     Exec('DELETE 4');
+
+    Exec('INSERT 1 ""');
+    Exec('APPEND 1 "Hello"');
+    Exec('SELECT 1', 'Hello');
+    Exec('APPEND 1 " world"');
+    Exec('SELECT 1', 'Hello world');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 "Hi "');
+    Exec('APPEND 1 "Hello"');
+    Exec('SELECT 1', 'Hi Hello');
+    Exec('APPEND 1 " world"');
+    Exec('SELECT 1', 'Hi Hello world');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 BINARY("")');
+    Exec('APPEND 1 BINARY("Hello")');
+    Exec('SELECT 1', 'Hello');
+    Exec('APPEND 1 BINARY(" world")');
+    Exec('SELECT 1', 'Hello world');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 {a:[1]}');
+    Exec('SELECT 1.a', '[1]');
+    Exec('APPEND 1.a 2');
+    Exec('SELECT 1.a', '[1,2]');
+    Exec('APPEND 1.a 3');
+    Exec('SELECT 1.a', '[1,2,3]');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 {a:"aa"}');
+    Exec('SELECT 1.a', 'aa');
+    Exec('APPEND 1.a "bb"');
+    Exec('SELECT 1.a', 'aabb');
+    Exec('APPEND 1.a 3');
+    Exec('SELECT 1.a', 'aabb3');
+    Exec('DELETE 1');
 
     Exec('CREATE PROCEDURE proc1(@par1, @par2) BEGIN RETURN @par1 + @par2 END');
     Exec('EVAL proc1(1, 2) + proc1(5, 6)', '14');

@@ -13,8 +13,7 @@
 { 2018/02/28  0.09  Exec statement }
 { 2018/03/03  0.10  Extend record iterator to use path }
 { 2018/03/04  0.11  In operator }
-
-// todo: print statement
+{ 2018/03/05  0.12  Append statement }
 
 {$INCLUDE kvInclude.inc}
 
@@ -80,6 +79,7 @@ type
       stDELETE,
       stSELECT,
       stUPDATE,
+      stAPPEND,
       stEXISTS,
       stMKPATH,
 
@@ -175,6 +175,7 @@ type
     function  ParseExistsExpression: AkvScriptExpression;
     function  ParseDeleteStatement: TkvScriptDeleteStatement;
     function  ParseUpdateStatement: TkvScriptUpdateStatement;
+    function  ParseAppendStatement: AkvScriptStatement;
     function  ParseMakePathStatement: AkvScriptStatement;
     function  ParseIfStatement: TkvScriptIfStatement;
     function  ParseBlockStatement: TkvScriptBlockStatement;
@@ -204,7 +205,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 37;
+  kvScriptKeywordCount = 38;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -216,6 +217,7 @@ const
       'INSERT',
       'DELETE',
       'UPDATE',
+      'APPEND',
       'SELECT',
       'EXISTS',
       'MKPATH',
@@ -255,6 +257,7 @@ const
       stINSERT,
       stDELETE,
       stUPDATE,
+      stAPPEND,
       stSELECT,
       stEXISTS,
       stMKPATH,
@@ -1491,6 +1494,21 @@ begin
   Result := TkvScriptUpdateStatement.Create(FieldRef, Val);
 end;
 
+function TkvScriptParser.ParseAppendStatement: AkvScriptStatement;
+var
+  FieldRef : TkvScriptRecordAndFieldReference;
+  Val : AkvScriptExpression;
+begin
+  Assert(FToken = stAPPEND);
+  SkipWhitespace;
+  GetNextTokenAsKey;
+
+  FieldRef := ParseFieldRef;
+  Val := ParseExpression;
+
+  Result := TkvScriptAppendStatement.Create(FieldRef, Val);
+end;
+
 function TkvScriptParser.ParseMakePathStatement: AkvScriptStatement;
 var
   RecRef : TkvScriptRecordReference;
@@ -1674,6 +1692,7 @@ begin
     stINSERT          : Result := ParseInsertStatement;
     stDELETE          : Result := ParseDeleteStatement;
     stUPDATE          : Result := ParseUpdateStatement;
+    stAPPEND          : Result := ParseAppendStatement;
     stMKPATH          : Result := ParseMakePathStatement;
     stIF              : Result := ParseIfStatement;
     stBEGIN           : Result := ParseBlockStatement;

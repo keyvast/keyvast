@@ -11,8 +11,11 @@
 { 2018/02/18  0.06  Handle hash collisions }
 { 2018/02/28  0.07  SysInfoDataset }
 { 2018/03/03  0.08  Folders support in Dataset }
+{ 2018/03/05  0.09  AppendRecord }
 
 {$INCLUDE kvInclude.inc}
+
+// Todo: AppendRecord for lists and dictionaries, INSERT[-1] and DICT.@ replace with APPEND
 
 unit kvObjects;
 
@@ -79,6 +82,8 @@ type
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
               const IsFolder: Boolean; var FolderBaseIdx: Word32);
+    procedure HashRecAppendValue(var HashRec: TkvHashFileRecord;
+              const Value: AkvValue);
     procedure RecursiveHashRecSlotCollisionResolve(
               const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
@@ -151,6 +156,9 @@ type
     procedure SetRecordAsBoolean(const Key: String; const Value: Boolean);
     procedure SetRecordAsDateTime(const Key: String; const Value: TDateTime);
     procedure SetRecordNull(const Key: String);
+
+    procedure AppendRecord(const Key: String; const Value: AkvValue);
+    procedure AppendRecordString(const Key: String; const Value: String);
 
     procedure DeleteRecord(const Key: String);
 
@@ -347,6 +355,9 @@ type
 
     procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); overload;
     procedure SetRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue); overload;
+
+    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); overload;
+    procedure AppendRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue); overload;
 
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); overload;
     procedure DeleteRecord(const Dataset: TkvDataset; const Key: String); overload;
@@ -592,6 +603,69 @@ begin
   else
     HashRecSetValue(HashRec, Value);
   HashRecSetKey(HashRec, Key, KeyHash);
+end;
+
+procedure TkvDataSet.HashRecAppendValue(var HashRec: TkvHashFileRecord;
+          const Value: AkvValue);
+var
+  DataBuf : Pointer;
+  DataSize : Integer;
+  OldSize : Integer;
+  NewSize : Integer;
+  NewValDataSize : Word32;
+  NewValLength : Word32;
+  NewValLenEnc : Word32;
+  OldVal : AkvValue;
+  NewVal : AkvValue;
+begin
+  // Only types with a length prefix followed by raw data (string and binary)
+  if not (HashRec.ValueTypeId in [KV_Value_TypeId_String, KV_Value_TypeId_Binary]) then
+    raise EkvObject.Create('Record value type is not appendable');
+  if Value.TypeId <> HashRec.ValueTypeId then
+    raise EkvObject.Create('Append value type mismatch record value type');
+
+  Value.GetDataBuf(DataBuf, DataSize);
+  OldSize := HashRec.ValueSize;
+  NewSize := OldSize + DataSize;
+
+  if NewSize <= KV_HashFileRecord_SlotShortValueSize then
+    begin
+      HashRec.ValueType := hfrvtShort;
+      Move(DataBuf^, HashRec.ValueShort[OldSize], DataSize);
+      NewValDataSize := NewSize - 1;
+      if HashRec.ValueTypeId = KV_Value_TypeId_String then
+        NewValLength := NewValDataSize div 2
+      else
+        NewValLength := NewValDataSize;
+      HashRec.ValueShort[0] := Byte(NewValLength);
+      HashRec.ValueSize := NewSize;
+    end
+  else
+  // NewSize needs to be big enough that value's internal VarWord32 length
+  // encoding use the 32 bit encoding before AppendChain can be used;
+  // and ValueType needs to be hfrvtLong.
+  if (NewSize <= 512) or
+     (HashRec.ValueType = hfrvtShort) then
+    begin
+      OldVal := HashRecToValue(HashRec);
+      NewVal := ValueOpPlus(OldVal, Value);
+      OldVal.Free;
+      HashRecSetValue(HashRec, NewVal);
+      NewVal.Free;
+    end
+  else
+    begin
+      Assert(HashRec.ValueType = hfrvtLong);
+      FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
+      NewValDataSize := NewSize - SizeOf(Word32);
+      if HashRec.ValueTypeId = KV_Value_TypeId_String then
+        NewValLength := NewValDataSize div 2
+      else
+        NewValLength := NewValDataSize;
+      kvVarWord32EncodeBuf(NewValLength, NewValLenEnc, SizeOf(Word32));
+      FValueFile.WriteChainStart(HashRec.ValueLongChainIndex, NewValLenEnc, SizeOf(Word32));
+      HashRec.ValueSize := NewSize;
+    end;
 end;
 
 const
@@ -916,7 +990,7 @@ begin
 end;
 
 const
-  KV_Dataset_LocateMaxLevels = 64;
+  KV_Dataset_LocateMaxLevels = 128;
 
 function TkvDataset.LocateRecordFromBase(const BaseIndex: Word32; const Key: String;
          out HashRecIdx: Word32; out HashRec: TkvHashFileRecord): Boolean;
@@ -1410,6 +1484,34 @@ begin
       end;
   end;
   FHashFile.SaveRecord(HashRecIdx, HashRec);
+end;
+
+procedure TkvDataset.AppendRecord(const Key: String; const Value: AkvValue);
+var
+  HashRecIdx : Word32;
+  HashRec : TkvHashFileRecord;
+begin
+  if Key = '' then
+    raise EkvObject.Create('Invalid key');
+  if not LocateRecord(Key, HashRecIdx, HashRec) then
+    raise EkvObject.CreateFmt('Key not found: %s', [Key]);
+  Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
+  if HashRec.ValueType = hfrvtFolder then
+    raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
+  HashRecAppendValue(HashRec, Value);
+  FHashFile.SaveRecord(HashRecIdx, HashRec);
+end;
+
+procedure TkvDataset.AppendRecordString(const Key: String; const Value: String);
+var
+  V : TkvStringValue;
+begin
+  V := TkvStringValue.Create;
+  try
+    AppendRecord(Key, V);
+  finally
+    V.Free;
+  end;
 end;
 
 procedure TkvDataset.DeleteRecord(const Key: String);
@@ -2354,6 +2456,19 @@ begin
   VerifyOpen;
   Assert(Assigned(Dataset));
   Dataset.SetRecord(Key, Value);
+end;
+
+procedure TkvSystem.AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
+begin
+  VerifyOpen;
+  RequireDatasetByName(DatabaseName, DatasetName).AppendRecord(Key, Value);
+end;
+
+procedure TkvSystem.AppendRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue);
+begin
+  VerifyOpen;
+  Assert(Assigned(Dataset));
+  Dataset.AppendRecord(Key, Value);
 end;
 
 procedure TkvSystem.DeleteRecord(const DatabaseName, DatasetName, Key: String);

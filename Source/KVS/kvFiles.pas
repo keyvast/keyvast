@@ -8,9 +8,9 @@
 { 2018/02/09  0.03  Hash file }
 { 2018/02/10  0.04  Blob file }
 { 2018/02/18  0.05  Hash file cache }
+{ 2018/03/05  0.06  Blob file append chain }
 
 // Todo: Pack files
-// Todo: Blob append
 
 {$INCLUDE kvInclude.inc}
 
@@ -265,6 +265,9 @@ type
     procedure ReadChain(const RecordIndex: Word32; var Buf; const BufSize: Integer);
     procedure ReleaseChain(const RecordIndex: Word32);
     procedure WriteChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+    function  GetChainSize(const RecordIndex: Word32): Integer;
+    procedure AppendChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+    procedure WriteChainStart(const RecordIndex: Word32; const Buf; const BufSize: Integer);
   end;
 
 
@@ -1185,6 +1188,7 @@ function TkvBlobFile.CreateChain(const Buf; const BufSize: Integer): Word32;
 var
   RecDataSize : Integer;
   FirstRecIdx : Word32;
+  FirstRecHdr : TkvBlobFileRecordHeader;
   Remain : Integer;
   RecCnt : Integer;
   DataP : PByte;
@@ -1221,12 +1225,17 @@ begin
     Inc(DataP, DataSize);
 
     if RecCnt = 1 then
-      FirstRecIdx := RecIdx
+      begin
+        FirstRecIdx := RecIdx;
+        FirstRecHdr := RecHdr;
+      end
     else
       begin
         Assert(PrevRecIdx <> KV_BlobFile_InvalidIndex);
         PrevRecHdr.NextRecordIndex := RecIdx;
         SaveRecordHeader(PrevRecIdx, PrevRecHdr);
+        if RecCnt = 2 then
+          FirstRecHdr := PrevRecHdr;
       end;
 
     if Remain > 0 then
@@ -1235,6 +1244,11 @@ begin
         PrevRecIdx := RecIdx;
       end;
   until Remain = 0;
+
+  Assert(FirstRecIdx <> KV_BlobFile_InvalidIndex);
+  FirstRecHdr.LastRecordIndex := RecIdx;
+  FirstRecHdr.ChainSize := BufSize;
+  SaveRecordHeader(FirstRecIdx, FirstRecHdr);
 
   SaveHeader;
   Result := FirstRecIdx;
@@ -1245,11 +1259,13 @@ var
   RecDataSize : Integer;
   Remain : Integer;
   RecIdx : Word32;
+  FirstRec : Boolean;
   RecHdr : TkvBlobFileRecordHeader;
   DataP : PByte;
   DataSize : Integer;
 begin
   Assert(Assigned(FFile));
+  Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
   if BufSize <= 0 then
     raise EkvFile.Create('Invalid buffer size');
 
@@ -1257,9 +1273,17 @@ begin
   Remain := BufSize;
   DataP := @Buf;
   RecIdx := RecordIndex;
+  FirstRec := True;
   repeat
     SeekRecord(RecIdx);
     FFile.ReadBuffer(RecHdr, KV_BlobFile_RecordHeaderSize);
+
+    if FirstRec then
+      begin
+        if Word32(BufSize) > RecHdr.ChainSize then
+          raise EkvFile.Create('Blob file read error: Chain size too short');
+        FirstRec := False;
+      end;
 
     DataSize := Remain;
     if DataSize > RecDataSize then
@@ -1308,12 +1332,15 @@ var
   RecIdx : Word32;
   NewRecIdx : Word32;
   RecHdr : TkvBlobFileRecordHeader;
+  FirstRecHdr : TkvBlobFileRecordHeader;
+  FirstRecIdx : Word32;
   NewRecHdr : TkvBlobFileRecordHeader;
   DataP : PByte;
   DataSize : Integer;
   HdrChanged : Boolean;
 begin
   Assert(Assigned(FFile));
+  Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
   if BufSize <= 0 then
     raise EkvFile.Create('Invalid buffer size');
 
@@ -1326,6 +1353,8 @@ begin
   Assert(RecIdx <> KV_BlobFile_InvalidIndex);
   SeekRecord(RecIdx);
   FFile.ReadBuffer(RecHdr, KV_BlobFile_RecordHeaderSize);
+  FirstRecIdx := RecordIndex;
+  FirstRecHdr := RecHdr;
 
   repeat
     DataSize := Remain;
@@ -1344,6 +1373,9 @@ begin
             NewRecIdx := AllocateRecord(NewRecHdr);
             RecHdr.NextRecordIndex := NewRecIdx;
             SaveRecordHeader(RecIdx, RecHdr);
+            if RecIdx = FirstRecIdx then
+              FirstRecHdr := RecHdr;
+            FirstRecHdr.LastRecordIndex := NewRecIdx;
             SaveRecordHeader(NewRecIdx, NewRecHdr);
             RecHdr := NewRecHdr;
             HdrChanged := True;
@@ -1357,8 +1389,148 @@ begin
       end;
   until Remain = 0;
 
+  FirstRecHdr.ChainSize := BufSize;
+  FirstRecHdr.LastRecordIndex := RecIdx;
+  SaveRecordHeader(FirstRecIdx, FirstRecHdr);
+
   if HdrChanged then
     SaveHeader;
+end;
+
+function TkvBlobFile.GetChainSize(const RecordIndex: Word32): Integer;
+var
+  RecHdr : TkvBlobFileRecordHeader;
+begin
+  Assert(Assigned(FFile));
+  Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
+
+  LoadRecordHeader(RecordIndex, RecHdr);
+  Result := RecHdr.ChainSize;
+end;
+
+procedure TkvBlobFile.AppendChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+var
+  RecDataSize : Integer;
+  Remain : Integer;
+  RecIdx : Word32;
+  NewRecIdx : Word32;
+  RecHdr : TkvBlobFileRecordHeader;
+  FirstRecHdr : TkvBlobFileRecordHeader;
+  FirstRecIdx : Word32;
+  LastBlockDataUsed : Integer;
+  LastBlockDataRemain : Integer;
+  NewRecHdr : TkvBlobFileRecordHeader;
+  DataP : PByte;
+  DataSize : Integer;
+  HdrChanged : Boolean;
+
+  procedure GetNewRecIdx;
+  begin
+    NewRecIdx := RecHdr.NextRecordIndex;
+    if NewRecIdx = KV_BlobFile_InvalidIndex then
+      begin
+        NewRecIdx := AllocateRecord(NewRecHdr);
+        RecHdr.NextRecordIndex := NewRecIdx;
+        SaveRecordHeader(RecIdx, RecHdr);
+        if RecIdx = FirstRecIdx then
+          FirstRecHdr := RecHdr;
+        FirstRecHdr.LastRecordIndex := NewRecIdx;
+        SaveRecordHeader(NewRecIdx, NewRecHdr);
+        RecHdr := NewRecHdr;
+        HdrChanged := True;
+      end
+    else
+      LoadRecordHeader(NewRecIdx, RecHdr);
+    RecIdx := NewRecIdx;
+  end;
+
+begin
+  Assert(Assigned(FFile));
+  Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
+  if BufSize <= 0 then
+    raise EkvFile.Create('Invalid buffer size');
+
+  RecDataSize := GetRecordDataSize;
+  Remain := BufSize;
+  DataP := @Buf;
+  HdrChanged := False;
+
+  FirstRecIdx := RecordIndex;
+  LoadRecordHeader(FirstRecIdx, FirstRecHdr);
+
+  RecIdx := FirstRecHdr.LastRecordIndex;
+  if RecIdx = KV_BlobFile_InvalidIndex then
+    raise EkvFile.Create('Blob file corrupt: Invalid record header');
+  LoadRecordHeader(RecIdx, RecHdr);
+
+  LastBlockDataUsed := Integer(FirstRecHdr.ChainSize) mod RecDataSize;
+  if LastBlockDataUsed = 0 then
+    LastBlockDataUsed := RecDataSize;
+  LastBlockDataRemain := RecDataSize - LastBlockDataUsed;
+
+  if LastBlockDataRemain > 0 then
+    begin
+      DataSize := Remain;
+      if DataSize > LastBlockDataRemain then
+        DataSize := LastBlockDataRemain;
+
+      FFile.Position := KV_BlobFile_HeaderSize +
+                        UInt64(RecIdx) * FFileHeader.RecordSize +
+                        KV_BlobFile_RecordHeaderSize +
+                        UInt64(LastBlockDataUsed);
+
+      FFile.WriteBuffer(DataP^, DataSize);
+      Inc(DataP, DataSize);
+      Dec(Remain, DataSize);
+
+      if Remain > 0 then
+        GetNewRecIdx;
+    end
+  else
+    GetNewRecIdx;
+
+  while Remain > 0 do
+    begin
+      DataSize := Remain;
+      if DataSize > RecDataSize then
+        DataSize := RecDataSize;
+
+      FFile.WriteBuffer(DataP^, DataSize);
+      Inc(DataP, DataSize);
+      Dec(Remain, DataSize);
+
+      if Remain > 0 then
+        GetNewRecIdx;
+    end;
+
+  FirstRecHdr.ChainSize := FirstRecHdr.ChainSize + Word32(BufSize);
+  FirstRecHdr.LastRecordIndex := RecIdx;
+  SaveRecordHeader(FirstRecIdx, FirstRecHdr);
+
+  if HdrChanged then
+    SaveHeader;
+end;
+
+procedure TkvBlobFile.WriteChainStart(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+var
+  RecDataSize : Integer;
+  RecHdr : TkvBlobFileRecordHeader;
+begin
+  Assert(Assigned(FFile));
+  Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
+  if BufSize <= 0 then
+    raise EkvFile.Create('Invalid buffer size');
+
+  RecDataSize := GetRecordDataSize;
+  if BufSize > RecDataSize then
+    raise EkvFile.Create('Invalid buffer size: Larger than record data size');
+
+  SeekRecord(RecordIndex);
+  FFile.ReadBuffer(RecHdr, KV_BlobFile_RecordHeaderSize);
+  if Word32(BufSize) > RecHdr.ChainSize then
+    raise EkvFile.Create('Invalid buffer size: Larger than chain size');
+
+  FFile.WriteBuffer(Buf, BufSize);
 end;
 
 

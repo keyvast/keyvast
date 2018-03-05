@@ -11,6 +11,7 @@
 { 2018/03/01  0.07  Binary value }
 { 2018/03/03  0.08  Unordered set value }
 { 2018/03/04  0.09  Optimised dictionary implementation }
+{ 2018/03/05  0.10  Value GetDataBuf function }
 
 // todo: hugeint
 // todo: decimals
@@ -78,6 +79,7 @@ type
     property  SerialSize: Integer read GetSerialSize;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; virtual;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; virtual;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); virtual;
   end;
   TkvValueArray = array of AkvValue;
 
@@ -102,6 +104,7 @@ type
     procedure Negate; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvStringValue = class(AkvValue)
@@ -125,6 +128,7 @@ type
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvFloatValue = class(AkvValue)
@@ -145,6 +149,7 @@ type
     procedure Negate; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvBooleanValue = class(AkvValue)
@@ -164,6 +169,7 @@ type
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvDateTimeValue = class(AkvValue)
@@ -183,6 +189,7 @@ type
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvBinaryValue = class(AkvValue)
@@ -203,6 +210,7 @@ type
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvNullValue = class(AkvValue)
@@ -214,6 +222,7 @@ type
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
   TkvListValue = class(AkvValue)
@@ -327,6 +336,8 @@ function ValueOpNOT(const A: AkvValue): AkvValue;
 function ValueOpCompare(const A, B: AkvValue): Integer;
 
 function ValueOpIn(const A, B: AkvValue): Boolean;
+
+function ValueOpAppend(const A, B: AkvValue): AkvValue;
 
 
 
@@ -524,6 +535,11 @@ begin
   raise EkvValue.CreateFmt('Type serialisation error: %s cannot serialise', [ClassName]);
 end;
 
+procedure AkvValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+begin
+  raise EkvValue.CreateFmt('Type serialisation error: %s cannot get data buffer', [ClassName]);
+end;
+
 
 
 { TkvIntegerValue }
@@ -609,6 +625,12 @@ begin
     raise EkvValue.Create(SInvalidBufferSize);
   FValue := PInt64(@Buf)^;
   Result := SizeOf(Int64);
+end;
+
+procedure TkvIntegerValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+begin
+  Buf := @FValue;
+  BufSize := SizeOf(Int64);
 end;
 
 
@@ -756,6 +778,23 @@ begin
   Result := BufSize - L;
 end;
 
+procedure TkvStringValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+var
+  L : Integer;
+begin
+  L := Length(FValue);
+  if L = 0 then
+    begin
+      Buf := nil;
+      BufSize := 0;
+    end
+  else
+    begin
+      Buf := Pointer(FValue);
+      BufSize := L * SizeOf(Char);
+    end;
+end;
+
 
 
 { TkvFloatValue }
@@ -825,6 +864,12 @@ begin
     raise EkvValue.Create(SInvalidBufferSize);
   FValue := PDouble(@Buf)^;
   Result := SizeOf(Double);
+end;
+
+procedure TkvFloatValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+begin
+  Buf := @FValue;
+  BufSize := SizeOf(Double);
 end;
 
 
@@ -899,7 +944,13 @@ begin
   if BufSize < SizeOf(Byte) then
     raise EkvValue.Create(SInvalidBufferSize);
   FValue := PByte(@Buf)^ <> 0;
-  Result := SizeOf(Double);
+  Result := SizeOf(Byte);
+end;
+
+procedure TkvBooleanValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+begin
+  Buf := @FValue;
+  BufSize := SizeOf(Byte);
 end;
 
 
@@ -966,6 +1017,12 @@ begin
     raise EkvValue.Create(SInvalidBufferSize);
   FValue := PDateTime(@Buf)^;
   Result := SizeOf(TDateTime);
+end;
+
+procedure TkvDateTimeValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+begin
+  Buf := @FValue;
+  BufSize := SizeOf(TDateTime);
 end;
 
 
@@ -1116,6 +1173,23 @@ begin
   Result := BufSize - L;
 end;
 
+procedure TkvBinaryValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+var
+  L : Integer;
+begin
+  L := Length(FValue);
+  if L = 0 then
+    begin
+      Buf := nil;
+      BufSize := 0;
+    end
+  else
+    begin
+      Buf := @FValue[0];
+      BufSize := L;
+    end;
+end;
+
 
 
 { TkvNullValue }
@@ -1148,6 +1222,12 @@ end;
 function TkvNullValue.PutSerialBuf(const Buf; const BufSize: Integer): Integer;
 begin
   Result := 0;
+end;
+
+procedure TkvNullValue.GetDataBuf(out Buf: Pointer; out BufSize: Integer);
+begin
+  Buf := nil;
+  BufSize := 0;
 end;
 
 
@@ -2230,6 +2310,27 @@ begin
     Result := TkvListValue(B).HasValue(A)
   else
     raise EkvValue.CreateFmt('Type error: Cannot apply in operator to types: %s and %s',
+        [A.ClassName, B.ClassName]);
+end;
+
+function ValueOpAppend(const A, B: AkvValue): AkvValue;
+var
+  L : TkvListValue;
+begin
+  if A is TkvStringValue then
+    Result := TkvStringValue.Create(A.AsString + B.AsString)
+  else
+  if A is TkvBinaryValue then
+    Result := TkvBinaryValue.Create(kvByteArrayAppend(A.GetAsBinary, B.GetAsBinary))
+  else
+  if A is TkvListValue then
+    begin
+      L := TkvListValue(A.Duplicate);
+      L.Add(B.Duplicate);
+      Result := L;
+    end
+  else
+    raise EkvValue.CreateFmt('Type error: Cannot append types: %s and %s',
         [A.ClassName, B.ClassName]);
 end;
 

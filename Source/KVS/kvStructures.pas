@@ -294,8 +294,8 @@ const
   KV_HashFileRecord_Magic   = $A507;
   KV_HashFileRecord_Version = 1;
 
-  KV_HashFileRecord_SlotShortKeyLength = 10;
-  KV_HashFileRecord_SlotShortValueSize = 16;
+  KV_HashFileRecord_SlotShortKeyLength = 9;
+  KV_HashFileRecord_SlotShortValueSize = 18;
 
 type
   TkvHashFileRecordType = (
@@ -398,7 +398,10 @@ type
     Magic           : Word;
     Version         : Word;
     NextRecordIndex : Word32;
-    Reserved        : array[0..7] of Byte;
+    case Integer of
+      0 : (Reserved        : array[0..7] of Byte);
+      1 : (LastRecordIndex : Word32;
+           ChainSize       : Word32);
   end;
   PkvBlobFileRecordHeader = ^TkvBlobFileRecordHeader;
 
@@ -595,6 +598,7 @@ begin
   Header.Magic := KV_BlobFileRecordHeader_Magic;
   Header.Version := KV_BlobFileRecordHeader_Version;
   Header.NextRecordIndex := KV_BlobFile_InvalidIndex;
+  Header.LastRecordIndex := KV_BlobFile_InvalidIndex;
 end;
 
 

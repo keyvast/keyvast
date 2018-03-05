@@ -381,6 +381,7 @@ type
     procedure UpdateValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); virtual; abstract;
     procedure DeleteValue(const Context: TkvScriptContext; const V: AkvValue); virtual; abstract;
     procedure InsertValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); virtual; abstract;
+    procedure AppendValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); virtual; abstract;
   end;
 
   { Field name field reference }
@@ -399,6 +400,7 @@ type
     procedure UpdateValue(const Context: TkvScriptContext; const RecVal, Value: AkvValue); override;
     procedure DeleteValue(const Context: TkvScriptContext; const V: AkvValue); override;
     procedure InsertValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); override;
+    procedure AppendValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); override;
   end;
 
   { List index field reference }
@@ -418,6 +420,7 @@ type
     procedure UpdateValue(const Context: TkvScriptContext; const RecVal, Value: AkvValue); override;
     procedure DeleteValue(const Context: TkvScriptContext; const V: AkvValue); override;
     procedure InsertValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); override;
+    procedure AppendValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue); override;
   end;
 
   { Boolean operator }
@@ -709,7 +712,23 @@ type
 
   TkvScriptUpdateStatement = class(AkvScriptStatement)
   private
-    FRef : TkvScriptRecordAndFieldReference;
+    FRef   : TkvScriptRecordAndFieldReference;
+    FValue : AkvScriptExpression;
+
+  public
+    constructor Create(const Ref: TkvScriptRecordAndFieldReference;
+                const Value: AkvScriptExpression);
+
+    function  GetAsString: String; override;
+    function  Duplicate: AkvScriptNode; override;
+    function  Execute(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
+  { Append statement }
+
+  TkvScriptAppendStatement = class(AkvScriptStatement)
+  private
+    FRef   : TkvScriptRecordAndFieldReference;
     FValue : AkvScriptExpression;
 
   public
@@ -2031,6 +2050,23 @@ begin
     until not D.IterateNext(Itr);
 end;
 
+procedure TkvScriptFieldNameFieldReference.AppendValue(
+          const Context: TkvScriptContext; const BaseVal, Value: AkvValue);
+var
+  A, B : AkvValue;
+begin
+  if Assigned(FFieldRef) then
+    A := FFieldRef.GetValue(Context, BaseVal)
+  else
+    A := BaseVal;
+  if not (A is TkvDictionaryValue) then
+    raise EkvScriptNode.CreateFmt('Field applied to a non-dictionary: %s', [FFieldName]);
+
+  B := TkvDictionaryValue(A).GetValue(FFieldName);
+
+  TkvDictionaryValue(A).SetValue(FFieldName, ValueOpAppend(B, Value));
+end;
+
 
 
 { TkvScriptListIndexFieldReference }
@@ -2158,6 +2194,27 @@ begin
     TkvListValue(A).AppendValue(Value.Duplicate)
   else
     TkvListValue(A).InsertValue(LI, Value.Duplicate);
+end;
+
+procedure TkvScriptListIndexFieldReference.AppendValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue);
+var
+  A : AkvValue;
+  LIV : AkvValue;
+  LI : Integer;
+  V, N : AkvValue;
+begin
+  if Assigned(FFieldRef) then
+    A := FFieldRef.GetValue(Context, BaseVal)
+  else
+    A := BaseVal;
+  if not (A is TkvListValue) then
+    raise EkvScriptNode.Create('Index applied to a non-list');
+  LIV := FListIndex.Evaluate(Context);
+  LI := LIV.AsInteger;
+  V := TkvListValue(A).GetValue(LI);
+  N := ValueOpAppend(V, Value);
+  TkvListValue(A).SetValue(LI, N);
+  N.Free;
 end;
 
 
@@ -3080,6 +3137,66 @@ begin
     A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
     try
       FieldRef.UpdateValue(Context, A, V);
+      Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+    finally
+      A.Free;
+    end;
+
+  finally
+    V.Free;
+  end;
+  Result := nil;
+end;
+
+
+
+{ TkvScriptAppendStatement }
+
+constructor TkvScriptAppendStatement.Create(const Ref: TkvScriptRecordAndFieldReference;
+  const Value: AkvScriptExpression);
+begin
+  Assert(Assigned(Value));
+
+  inherited Create;
+  FRef := Ref;
+  FValue := Value;
+end;
+
+function TkvScriptAppendStatement.GetAsString: String;
+begin
+  Result := 'APPEND ' + FRef.GetAsString + ' ' + FValue.GetAsString;
+end;
+
+function TkvScriptAppendStatement.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptAppendStatement.Create(
+      FRef.Duplicate as TkvScriptRecordAndFieldReference,
+      FValue.DuplicateExpression);
+end;
+
+function TkvScriptAppendStatement.Execute(const Context: TkvScriptContext): AkvValue;
+var
+  V, A : AkvValue;
+  RecRef : TkvScriptRecordReference;
+  FieldRef : AkvScriptFieldReference;
+  ResDb, ResDs, ResRec : String;
+begin
+  RecRef := FRef.FRecordRef;
+  FieldRef := FRef.FFieldRef;
+  V := FValue.Evaluate(Context);
+  try
+    RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
+
+    if not Assigned(FieldRef) then
+      begin
+        Context.Session.AppendRecord(ResDb, ResDs, ResRec, V);
+        Result := nil;
+        exit;
+      end;
+
+    A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+    try
+      FieldRef.AppendValue(Context, A, V);
       Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
     finally
       A.Free;

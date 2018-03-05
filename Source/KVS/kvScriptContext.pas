@@ -63,6 +63,7 @@ type
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; virtual; abstract;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); virtual; abstract;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); virtual; abstract;
+    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); virtual; abstract;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;

@@ -101,6 +101,7 @@ type
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; override;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); override;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
+    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String; out Iterator: TkvDatasetIterator): Boolean; override;
@@ -235,6 +236,12 @@ type
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
     procedure SetRecord(const Session: TkvSession; const Dataset: TkvDataset;
+              const Key: String; const Value: AkvValue); overload;
+
+    procedure AppendRecord(const Session: TkvSession;
+              const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue); overload;
+    procedure AppendRecord(const Session: TkvSession; const Dataset: TkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     function  IterateRecords(const Session: TkvSession;
@@ -498,6 +505,17 @@ begin
     FSystem.SetRecord(self, FSelectedDataset, Key, Value)
   else
     FSystem.SetRecord(self,
+        UsedDatabaseName(DatabaseName),
+        UsedDatasetName(DatasetName),
+        Key, Value);
+end;
+
+procedure TkvSession.AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
+begin
+  if (DatasetName = '') and Assigned(FSelectedDataset) then
+    FSystem.AppendRecord(self, FSelectedDataset, Key, Value)
+  else
+    FSystem.AppendRecord(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
         Key, Value);
@@ -1199,6 +1217,29 @@ begin
   FExecLock.Acquire;
   try
     FSystem.SetRecord(Dataset, Key, Value);
+  finally
+    FExecLock.Release;
+  end;
+end;
+
+procedure TkvScriptSystem.AppendRecord(const Session: TkvSession;
+          const DatabaseName, DatasetName, Key: String;
+          const Value: AkvValue);
+begin
+  FExecLock.Acquire;
+  try
+    FSystem.AppendRecord(DatabaseName, DatasetName, Key, Value);
+  finally
+    FExecLock.Release;
+  end;
+end;
+
+procedure TkvScriptSystem.AppendRecord(const Session: TkvSession; const Dataset: TkvDataset;
+          const Key: String; const Value: AkvValue);
+begin
+  FExecLock.Acquire;
+  try
+    FSystem.AppendRecord(Dataset, Key, Value);
   finally
     FExecLock.Release;
   end;
