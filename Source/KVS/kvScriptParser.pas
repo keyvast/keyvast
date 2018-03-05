@@ -11,6 +11,8 @@
 { 2018/02/23  0.07  Stored procedure }
 { 2018/02/26  0.08  UniqueId }
 { 2018/02/28  0.09  Exec statement }
+{ 2018/03/03  0.10  Extend record iterator to use path }
+{ 2018/03/04  0.11  In operator }
 
 // todo: print statement
 
@@ -79,6 +81,7 @@ type
       stSELECT,
       stUPDATE,
       stEXISTS,
+      stMKPATH,
 
       stSET,
 
@@ -98,6 +101,8 @@ type
       stNULL,
       stTRUE,
       stFALSE,
+
+      stIN,
 
       stAND,
       stOR,
@@ -170,6 +175,7 @@ type
     function  ParseExistsExpression: AkvScriptExpression;
     function  ParseDeleteStatement: TkvScriptDeleteStatement;
     function  ParseUpdateStatement: TkvScriptUpdateStatement;
+    function  ParseMakePathStatement: AkvScriptStatement;
     function  ParseIfStatement: TkvScriptIfStatement;
     function  ParseBlockStatement: TkvScriptBlockStatement;
     function  ParseSetStatement: TkvScriptSetStatement;
@@ -198,7 +204,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 35;
+  kvScriptKeywordCount = 37;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -212,6 +218,7 @@ const
       'UPDATE',
       'SELECT',
       'EXISTS',
+      'MKPATH',
       'SET',
       'EVAL',
       'EXEC',
@@ -225,6 +232,7 @@ const
       'NULL',
       'TRUE',
       'FALSE',
+      'IN',
       'AND',
       'OR',
       'XOR',
@@ -249,6 +257,7 @@ const
       stUPDATE,
       stSELECT,
       stEXISTS,
+      stMKPATH,
       stSET,
       stEVAL,
       stEXEC,
@@ -262,6 +271,7 @@ const
       stNULL,
       stTRUE,
       stFALSE,
+      stIN,
       stAND,
       stOR,
       stXOR,
@@ -1172,7 +1182,8 @@ begin
   while FToken in [stOR, stXOR,
                    stLessThan, stGreaterThan, stEqual, stNotEqual,
                    stLessOrEqual, stGreaterOrEqual,
-                   stPlus, stMinus] do
+                   stPlus, stMinus,
+                   stIN] do
     begin
       T := FToken;
       GetNextToken;
@@ -1188,6 +1199,7 @@ begin
         stGreaterOrEqual : Ex := TkvScriptCompareOperator.Create(TokenToCompareOp(T), Ex, RiEx);
         stPlus : Ex := TkvScriptPlusOperator.Create(Ex, RiEx);
         stMinus : Ex := TkvScriptMinusOperator.Create(Ex, RiEx);
+        stIN : Ex := TkvScriptInOperator.Create(Ex, RiEx);
       end;
     end;
   Result := Ex;
@@ -1479,6 +1491,19 @@ begin
   Result := TkvScriptUpdateStatement.Create(FieldRef, Val);
 end;
 
+function TkvScriptParser.ParseMakePathStatement: AkvScriptStatement;
+var
+  RecRef : TkvScriptRecordReference;
+begin
+  Assert(FToken = stMKPATH);
+  SkipWhitespace;
+  GetNextTokenAsKey;
+
+  RecRef := ParseRecordRef;
+
+  Result := TkvScriptMakePathStatement.Create(RecRef);
+end;
+
 function TkvScriptParser.ParseIfStatement: TkvScriptIfStatement;
 var
   Cond : AkvScriptExpression;
@@ -1574,31 +1599,35 @@ end;
 
 function TkvScriptParser.ParseIterateRecordsStatement: AkvScriptStatement;
 var
-  Iden : String;
-  IdenDb : String;
-  IdenDs : String;
-  IdenIt : String;
+  KeyDatabase : String;
+  KeyDataset : String;
+  KeyRec : String;
+  KeyIdentifier : String;
 begin
   Assert(FToken = stITERATE_RECORDS);
   SkipWhitespace;
   GetNextTokenAsKey;
 
-  Iden := GetKeyToken;
+  KeyDatabase := GetKeyToken;
   GetNextTokenAsKey;
-  if FToken = stColon then
+  if FToken <> stColon then
+    raise EkvScriptParser.Create(': expected');
+  GetNextTokenAsKey;
+  KeyDataset := GetKeyToken;
+  GetNextTokenAsKey;
+  if FToken = stBackslash then
     begin
-      IdenDb := Iden;
       GetNextTokenAsKey;
-      IdenDs := GetKeyToken;
-    end
-  else
-    IdenDs := Iden;
+      KeyRec := GetKeyToken;
+      GetNextTokenAsKey;
+    end;
 
+  SkipWhitespace;
   GetNextToken;
+  KeyIdentifier := ExpectIdentifier;
 
-  IdenIt := ExpectIdentifier;
-
-  Result := TkvScriptIterateStatement.Create(IdenDb, IdenDs, IdenIt);
+  Result := TkvScriptIterateStatement.Create(KeyDatabase, KeyDataset, KeyRec,
+      KeyIdentifier);
 end;
 
 function TkvScriptParser.ParseIterateNextStatement: AkvScriptStatement;
@@ -1645,6 +1674,7 @@ begin
     stINSERT          : Result := ParseInsertStatement;
     stDELETE          : Result := ParseDeleteStatement;
     stUPDATE          : Result := ParseUpdateStatement;
+    stMKPATH          : Result := ParseMakePathStatement;
     stIF              : Result := ParseIfStatement;
     stBEGIN           : Result := ParseBlockStatement;
     stSET             : Result := ParseSetStatement;

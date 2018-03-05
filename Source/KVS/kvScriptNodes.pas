@@ -9,9 +9,6 @@
 { 2018/02/23  0.05  Stored procedures }
 { 2018/03/01  0.06  Push/Pop used database and dataset on procedure call }
 
-// todo: string manipulation built-ins
-// todo: date manipulation built-ins
-
 {$INCLUDE kvInclude.inc}
 
 unit kvScriptNodes;
@@ -533,6 +530,15 @@ type
     function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
   end;
 
+  { In operator }
+
+  TkvScriptInOperator = class(AkvScriptBinaryOperator)
+  public
+    function  Duplicate: AkvScriptNode; override;
+    function  GetAsString: String; override;
+    function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
   { Record and field reference }
 
   TkvScriptRecordAndFieldReference = class(AkvScriptNode)
@@ -715,7 +721,22 @@ type
     function  Execute(const Context: TkvScriptContext): AkvValue; override;
   end;
 
-  { Output statement }
+  { MkPath statement }
+
+  TkvScriptMakePathStatement = class(AkvScriptStatement)
+  private
+    FRef : TkvScriptRecordReference;
+
+  public
+    constructor Create(const Ref: TkvScriptRecordReference);
+    destructor Destroy; override;
+
+    function  Duplicate: AkvScriptNode; override;
+    function  GetAsString: String; override;
+    function  Execute(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
+  { Eval statement }
 
   TkvScriptEvalStatement = class(AkvScriptStatement)
   private
@@ -776,10 +797,11 @@ type
   private
     FDatabaseName : String;
     FDatasetName : String;
+    FKeyPath : String;
     FIdentifier : String;
 
   public
-    constructor Create(const DatabaseName, DatasetName, Identifier: String);
+    constructor Create(const DatabaseName, DatasetName, KeyPath, Identifier: String);
 
     function  Duplicate: AkvScriptNode; override;
     function  GetAsString: String; override;
@@ -843,7 +865,6 @@ type
                 const Statement : AkvScriptStatement);
     destructor Destroy; override;
 
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -1407,8 +1428,6 @@ begin
     raise EkvScriptNode.Create('Function call to a non-procedure');
   PR := AkvScriptProcedureValue(A);
   L := Length(FParamExpressions);
-  if L <> PR.GetParamCount then
-    raise EkvScriptNode.Create('Parameter count mismatch');
   SetLength(PV, L);
   for I := 0 to L - 1 do
     PV[I] := nil;
@@ -1975,15 +1994,16 @@ begin
     A := V;
   if not (A is TkvDictionaryValue) then
     raise EkvScriptNode.CreateFmt('Field applied to a non-dictionary: %s', [FFieldName]);
-  TkvDictionaryValue(A).DeleteValue(FFieldName);
+  TkvDictionaryValue(A).DeleteKey(FFieldName);
 end;
 
 procedure TkvScriptFieldNameFieldReference.InsertValue(const Context: TkvScriptContext; const BaseVal, Value: AkvValue);
 var
   A : AkvValue;
-  I : Integer;
   D, E : TkvDictionaryValue;
-  P : PkvDictionaryKeyValuePair;
+  Itr : TkvDictionaryValueIterator;
+  ItrKey : String;
+  ItrVal : AkvValue;
 begin
   if Assigned(FFieldRef) then
     A := FFieldRef.GetValue(Context, BaseVal)
@@ -2003,11 +2023,12 @@ begin
   if not (Value is TkvDictionaryValue) then
     raise EkvScriptNode.Create('Value must be a dictionary');
   D := TkvDictionaryValue(Value);
-  for I := 0 to D.GetCount - 1 do
-    begin
-      P := D.GetItem(I);
-      E.Add(P^.Key, P^.Value.Duplicate);
-    end;
+
+  if D.IterateFirst(Itr) then
+    repeat
+      D.IteratorGetKeyValue(Itr, ItrKey, ItrVal);
+      E.Add(ItrKey, ItrVal.Duplicate);
+    until not D.IterateNext(Itr);
 end;
 
 
@@ -2485,6 +2506,39 @@ begin
     R := FRight.Evaluate(Context);
     try
       Result := ValueOpDivide(L, R);
+    finally
+      R.Free;
+    end;
+  finally
+    L.Free;
+  end;
+end;
+
+
+
+{ TkvScriptInOperator }
+
+function TkvScriptInOperator.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptInOperator.Create(
+      FLeft.DuplicateExpression,
+      FRight.DuplicateExpression);
+end;
+
+function TkvScriptInOperator.GetAsString: String;
+begin
+  Result := '(' + FLeft.GetAsString + ' IN ' + FRight.GetAsString + ')';
+end;
+
+function TkvScriptInOperator.Evaluate(const Context: TkvScriptContext): AkvValue;
+var
+  L, R : AkvValue;
+begin
+  L := FLeft.Evaluate(Context);
+  try
+    R := FRight.Evaluate(Context);
+    try
+      Result := TkvBooleanValue.Create(ValueOpIn(L, R));
     finally
       R.Free;
     end;
@@ -3039,7 +3093,43 @@ end;
 
 
 
-{ Output statement }
+{ TkvScriptMkPathStatement }
+
+constructor TkvScriptMakePathStatement.Create(const Ref: TkvScriptRecordReference);
+begin
+  inherited Create;
+  FRef := Ref;
+end;
+
+function TkvScriptMakePathStatement.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptMakePathStatement.Create(
+      FRef.Duplicate as TkvScriptRecordReference);
+end;
+
+destructor TkvScriptMakePathStatement.Destroy;
+begin
+  FreeAndNil(FRef);
+  inherited Destroy;
+end;
+
+function TkvScriptMakePathStatement.GetAsString: String;
+begin
+  Result := 'MKPATH ' + FRef.GetAsString;
+end;
+
+function TkvScriptMakePathStatement.Execute(const Context: TkvScriptContext): AkvValue;
+var
+  ResDb, ResDs, ResRec : String;
+begin
+  FRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
+  Context.Session.MakePath(ResDb, ResDs, ResRec);
+  Result := nil;
+end;
+
+
+
+{ TkvScriptEvalStatement }
 
 constructor TkvScriptEvalStatement.Create(const Expr: AkvScriptExpression);
 begin
@@ -3246,13 +3336,14 @@ end;
 { TkvScriptIterateStatement }
 
 constructor TkvScriptIterateStatement.Create(
-            const DatabaseName, DatasetName, Identifier: String);
+            const DatabaseName, DatasetName, KeyPath, Identifier: String);
 begin
   Assert(Identifier <> '');
 
   inherited Create;
   FDatabaseName := DatabaseName;
   FDatasetName := DatasetName;
+  FKeyPath := KeyPath;
   FIdentifier := Identifier;
 end;
 
@@ -3270,7 +3361,7 @@ end;
 function TkvScriptIterateStatement.Duplicate: AkvScriptNode;
 begin
   Result := TkvScriptIterateStatement.Create(
-      FDatabaseName, FDatasetName, FIdentifier);
+      FDatabaseName, FDatasetName, FKeyPath, FIdentifier);
 end;
 
 function TkvScriptIterateStatement.Execute(const Context: TkvScriptContext): AkvValue;
@@ -3282,7 +3373,7 @@ var
 begin
   DbN := kvResolveVariableKey(Context, FDatabaseName);
   DsN := kvResolveVariableKey(Context, FDatasetName);
-  Context.Session.IterateRecords(DbN, DsN, Iterator);
+  Context.Session.IterateRecords(DbN, DsN, FKeyPath, Iterator);
   ItVal := TkvDatasetIteratorValue.Create(Iterator);
   Context.Scope.SetIdentifier(FIdentifier, ItVal);
   Result := nil;
@@ -3468,11 +3559,6 @@ begin
   FreeAndNil(FLastResult);
   FreeAndNil(FStatement);
   inherited Destroy;
-end;
-
-function TkvScriptProcedureValue.GetParamCount: Integer;
-begin
-  Result := Length(FParamList);
 end;
 
 function TkvScriptProcedureValue.Call(const Context: TkvScriptContext;

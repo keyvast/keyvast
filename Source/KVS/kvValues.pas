@@ -9,8 +9,11 @@
 { 2018/02/18  0.05  Null value, DateTime }
 { 2018/02/26  0.06  VarWord32 encoding }
 { 2018/03/01  0.07  Binary value }
+{ 2018/03/03  0.08  Unordered set value }
+{ 2018/03/04  0.09  Optimised dictionary implementation }
 
-// todo: hugeint, decimals
+// todo: hugeint
+// todo: decimals
 
 {$INCLUDE kvInclude.inc}
 
@@ -19,7 +22,8 @@ unit kvValues;
 interface
 
 uses
-  SysUtils;
+  SysUtils,
+  kvHashList;
 
 
 
@@ -33,6 +37,7 @@ const
   KV_Value_TypeId_Null       = $10;
   KV_Value_TypeId_List       = $20;
   KV_Value_TypeId_Dictionary = $21;
+  KV_Value_TypeId_Set        = $22;
   KV_Value_TypeId_Other      = $FF;
 
 
@@ -225,28 +230,29 @@ type
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
     procedure Add(const Value: AkvValue);
+    procedure AddList(const List: TkvListValue);
     function  GetValue(const Index: Integer): AkvValue;
     procedure SetValue(const Index: Integer; const Value: AkvValue);
     procedure DeleteValue(const Index: Integer);
     procedure InsertValue(const Index: Integer; const Value: AkvValue);
     procedure AppendValue(const Value: AkvValue);
+    function  HasValue(const Value: AkvValue): Boolean;
   end;
 
-  TkvDictionaryKeyValuePair = record
-    Key   : String;
-    Value : AkvValue;
+  TkvDictionaryValueIterator = record
+    Itr : TkvStringHashListIterator;
+    Itm : PkvStringHashListItem;
   end;
-  PkvDictionaryKeyValuePair = ^TkvDictionaryKeyValuePair;
 
   TkvDictionaryValue = class(AkvValue)
   private
-    FValue : array of TkvDictionaryKeyValuePair;
+    FValue : TkvStringHashList;
   protected
     function  GetAsString: String; override;
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
-    function  GetKeyIndex(const Key: String): Integer;
   public
+    constructor Create;
     destructor Destroy; override;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
@@ -268,9 +274,34 @@ type
     procedure SetValueString(const Key: String; const Value: String);
     procedure SetValueInteger(const Key: String; const Value: Int64);
     procedure SetValueDateTime(const Key: String; const Value: TDateTime);
-    procedure DeleteValue(const Key: String);
+    procedure DeleteKey(const Key: String);
+    function  IterateFirst(out Iterator: TkvDictionaryValueIterator): Boolean;
+    function  IterateNext(out Iterator: TkvDictionaryValueIterator): Boolean;
+    procedure IteratorGetKeyValue(const Iterator: TkvDictionaryValueIterator;
+              out Key: String; out Value: AkvValue);
     function  GetCount: Integer;
-    function  GetItem(const Idx: Integer): PkvDictionaryKeyValuePair;
+  end;
+
+  TkvSetValue = class(AkvValue)
+  private
+    FValue : TkvStringHashList;
+  protected
+    function  GetAsString: String; override;
+    function  GetTypeId: Byte; override;
+    function  GetSerialSize: Integer; override;
+  public
+    constructor Create; overload;
+    constructor Create(const Value: TkvStringHashList); overload;
+    destructor Destroy; override;
+    function  Duplicate: AkvValue; override;
+    function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
+    function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    procedure Clear;
+    procedure Add(const Key: String);
+    procedure AddSet(const Value: TkvSetValue);
+    function  Exists(const Key: String): Boolean;
+    procedure DeleteKey(const Key: String);
+    procedure DeleteSet(const Value: TkvSetValue);
   end;
 
 
@@ -294,6 +325,8 @@ function ValueOpAND(const A, B: AkvValue): AkvValue;
 function ValueOpNOT(const A: AkvValue): AkvValue;
 
 function ValueOpCompare(const A, B: AkvValue): Integer;
+
+function ValueOpIn(const A, B: AkvValue): Boolean;
 
 
 
@@ -396,6 +429,7 @@ begin
     KV_Value_TypeId_Null       : Result := TkvNullValue.Create;
     KV_Value_TypeId_List       : Result := TkvListValue.Create;
     KV_Value_TypeId_Dictionary : Result := TkvDictionaryValue.Create;
+    KV_Value_TypeId_Set        : Result := TkvSetValue.Create;
   else
     raise EkvValue.Create('Invalid value type id');
   end;
@@ -1258,6 +1292,19 @@ begin
   FValue[L] := Value;
 end;
 
+procedure TkvListValue.AddList(const List: TkvListValue);
+var
+  L, N, I : Integer;
+begin
+  N := Length(List.FValue);
+  if N = 0 then
+    exit;
+  L := Length(FValue);
+  SetLength(FValue, L + N);
+  for I := 0 to N - 1 do
+    FValue[L + I] := List.FValue[I].Duplicate;
+end;
+
 function TkvListValue.GetValue(const Index: Integer): AkvValue;
 begin
   if (Index < 0) or (Index >= Length(FValue)) then
@@ -1308,43 +1355,70 @@ begin
   FValue[L] := Value;
 end;
 
+function TkvListValue.HasValue(const Value: AkvValue): Boolean;
+var
+  I : Integer;
+begin
+  for I := 0 to Length(FValue) - 1 do
+    if FValue[I].ClassType = Value.ClassType then
+      if ValueOpCompare(FValue[I], Value) = 0 then
+        begin
+          Result := True;
+          exit;
+        end;
+  Result := False;
+end;
+
 
 
 { TkvDictionaryValue }
 
-destructor TkvDictionaryValue.Destroy;
-var
-  I : Integer;
+constructor TkvDictionaryValue.Create;
 begin
-  for I := Length(FValue) - 1 downto 0 do
-    FreeAndNil(FValue[I].Value);
+  inherited Create;
+  FValue := TkvStringHashList.Create(True, False, True);
+end;
+
+destructor TkvDictionaryValue.Destroy;
+begin
+  FreeAndNil(FValue);
   inherited Destroy;
 end;
 
 function TkvDictionaryValue.Duplicate: AkvValue;
 var
   R : TkvDictionaryValue;
-  I : Integer;
+  Itr : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
 begin
   R := TkvDictionaryValue.Create;
-  for I := 0 to Length(FValue) - 1 do
-    R.Add(FValue[I].Key, FValue[I].Value.Duplicate);
+  Itm := FValue.IterateFirst(Itr);
+  while Assigned(Itm) do
+    begin
+      R.Add(Itm^.Key, AkvValue(Itm^.Value).Duplicate);
+      Itm := FValue.IterateNext(Itr);
+    end;
   Result := R;
 end;
 
 function TkvDictionaryValue.GetAsString: String;
 var
   S : String;
-  I : Integer;
-  V : PkvDictionaryKeyValuePair;
+  F : Boolean;
+  Itr : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
 begin
   S := '{';
-  for I := 0 to Length(FValue) - 1 do
+  F := True;
+  Itm := FValue.IterateFirst(Itr);
+  while Assigned(Itm) do
     begin
-      if I > 0 then
+      if F then
+        F := False
+      else
         S := S + ',';
-      V := @FValue[I];
-      S := S + V^.Key + ':' + V^.Value.GetAsScript;
+      S := S + Itm^.Key + ':' + AkvValue(Itm^.Value).GetAsScript;
+      Itm := FValue.IterateNext(Itr);
     end;
   S := S + '}';
   Result := S;
@@ -1360,19 +1434,22 @@ var
   L : Integer;
   R : Integer;
   I : Integer;
-  V : PkvDictionaryKeyValuePair;
   N : Integer;
   F : Integer;
+  Itr : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
 begin
-  L := Length(FValue);
+  L := FValue.Count;
   R := kvVarWord32EncodedSize(L);
+  Itm := FValue.IterateFirst(Itr);
   for I := 0 to L - 1 do
     begin
-      V := @FValue[I];
-      N := Length(V^.Key);
+      Assert(Assigned(Itm));
+      N := Length(Itm^.Key);
       F := kvVarWord32EncodedSize(N);
       Inc(R, F + N * SizeOf(Char) +
-             1 + V^.Value.GetSerialSize);
+             1 + AkvValue(Itm^.Value).GetSerialSize);
+      Itm := FValue.IterateNext(Itr);
     end;
   Result := R;
 end;
@@ -1384,20 +1461,22 @@ var
   M : Int32;
   F : Integer;
   I : Integer;
-  V : PkvDictionaryKeyValuePair;
   N : Integer;
   T : Int32;
+  Itr : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
 begin
   P := @Buf;
   L := BufSize;
-  M := Length(FValue);
+  M := FValue.Count;
   F := kvVarWord32EncodeBuf(M, P^, L);
   Inc(P, F);
   Dec(L, F);
+  Itm := FValue.IterateFirst(Itr);
   for I := 0 to M - 1 do
     begin
-      V := @FValue[I];
-      T := Length(V^.Key);
+      Assert(Assigned(Itm));
+      T := Length(Itm^.Key);
       F := kvVarWord32EncodeBuf(T, P^, L);
       Inc(P, F);
       Dec(L, F);
@@ -1405,17 +1484,18 @@ begin
       if L < N then
         raise EkvValue.Create(SInvalidBufferSize);
       if T > 0 then
-        Move(PChar(V^.Key)^, P^, N);
+        Move(PChar(Itm^.Key)^, P^, N);
       Inc(P, N);
       Dec(L, N);
       if L < 1 then
         raise EkvValue.Create(SInvalidBufferSize);
-      P^ := V^.Value.GetTypeId;
+      P^ := AkvValue(Itm^.Value).GetTypeId;
       Inc(P);
       Dec(L);
-      N := V^.Value.GetSerialBuf(P^, L);
+      N := AkvValue(Itm^.Value).GetSerialBuf(P^, L);
       Inc(P, N);
       Dec(L, N);
+      Itm := FValue.IterateNext(Itr);
     end;
   Result := BufSize - L;
 end;
@@ -1433,7 +1513,6 @@ var
   KeyLen : Word32;
   Key : String;
   M : Integer;
-  Pair : PkvDictionaryKeyValuePair;
 begin
   P := @Buf;
   L := BufSize;
@@ -1443,7 +1522,7 @@ begin
   if Int32(Cnt) < 0 then
     raise EkvValue.Create('Invalid buffer: List count invalid');
 
-  SetLength(FValue, Cnt);
+  FValue.Clear;
   for I := 0 to Int32(Cnt) - 1 do
     begin
       F := kvVarWord32DecodeBuf(P^, L, KeyLen);
@@ -1472,22 +1551,16 @@ begin
       Inc(P, N);
       Dec(L, N);
 
-      Pair := @FValue[I];
-      Pair^.Key := Key;
-      Pair^.Value := Val;
+      FValue.Add(Key, Val);
     end;
 
   Result := BufSize - L;
 end;
 
 procedure TkvDictionaryValue.Add(const Key: String; const Value: AkvValue);
-var
-  L : Integer;
 begin
-  L := Length(FValue);
-  SetLength(FValue, L + 1);
-  FValue[L].Key := Key;
-  FValue[L].Value := Value;
+  Assert(Assigned(Value));
+  FValue.Add(Key, Value);
 end;
 
 procedure TkvDictionaryValue.AddString(const Key: String; const Value: String);
@@ -1515,32 +1588,18 @@ begin
   Add(Key, TkvDateTimeValue.Create(Value));
 end;
 
-function TkvDictionaryValue.GetKeyIndex(const Key: String): Integer;
-var
-  I : Integer;
-begin
-  for I := 0 to Length(FValue) - 1 do
-    if SameText(FValue[I].Key, Key) then
-      begin
-        Result := I;
-        exit;
-      end;
-  Result := -1;
-end;
-
 function TkvDictionaryValue.Exists(const Key: String): Boolean;
 begin
-  Result := GetKeyIndex(Key) >= 0;
+  Result := FValue.KeyExists(Key);
 end;
 
 function TkvDictionaryValue.GetValue(const Key: String): AkvValue;
 var
-  I : Integer;
+  V : TObject;
 begin
-  I := GetKeyIndex(Key);
-  if I < 0 then
+  if not FValue.GetValue(Key, V) then
     raise EkvValue.CreateFmt('Dictionary key not found: %s', [Key]);
-  Result := FValue[I].Value;
+  Result := AkvValue(V);
 end;
 
 function TkvDictionaryValue.GetValueAsString(const Key: String): String;
@@ -1569,14 +1628,9 @@ begin
 end;
 
 procedure TkvDictionaryValue.SetValue(const Key: String; const Value: AkvValue);
-var
-  I : Integer;
 begin
-  I := GetKeyIndex(Key);
-  if I < 0 then
-    raise EkvValue.CreateFmt('Dictionary key not found: %s', [Key]);
-  FValue[I].Value.Free;
-  FValue[I].Value := Value;
+  Assert(Assigned(Value));
+  FValue.SetValue(Key, Value);
 end;
 
 procedure TkvDictionaryValue.SetValueString(const Key: String; const Value: String);
@@ -1594,31 +1648,252 @@ begin
   SetValue(Key, TkvDateTimeValue.Create(Value));
 end;
 
-procedure TkvDictionaryValue.DeleteValue(const Key: String);
-var
-  I, L, J : Integer;
+procedure TkvDictionaryValue.DeleteKey(const Key: String);
 begin
-  I := GetKeyIndex(Key);
-  if I < 0 then
-    raise EkvValue.CreateFmt('Dictionary key not found: %s', [Key]);
-  FValue[I].Value.Free;
-  L := Length(FValue);
-  for J := I to L - 2 do
-    FValue[J] := FValue[J + 1];
-  SetLength(FValue, L - 1);
+  FValue.DeleteKey(Key);
+end;
+
+function TkvDictionaryValue.IterateFirst(out Iterator: TkvDictionaryValueIterator): Boolean;
+begin
+  Iterator.Itm := FValue.IterateFirst(Iterator.Itr);
+  Result := Assigned(Iterator.Itm);
+end;
+
+function TkvDictionaryValue.IterateNext(out Iterator: TkvDictionaryValueIterator): Boolean;
+begin
+  Iterator.Itm := FValue.IterateNext(Iterator.Itr);
+  Result := Assigned(Iterator.Itm);
+end;
+
+procedure TkvDictionaryValue.IteratorGetKeyValue(
+          const Iterator: TkvDictionaryValueIterator;
+          out Key: String; out Value: AkvValue);
+begin
+  if not Assigned(Iterator.Itm) then
+    raise EkvValue.Create('Iterator has no value');
+  Key := Iterator.Itm^.Key;
+  Value := AkvValue(Iterator.Itm.Value);
 end;
 
 function TkvDictionaryValue.GetCount: Integer;
 begin
-  Result := Length(FValue);
+  Result := FValue.Count;
 end;
 
-function TkvDictionaryValue.GetItem(const Idx: Integer): PkvDictionaryKeyValuePair;
-begin
-  Assert(Idx >= 0);
-  Assert(Idx < Length(FValue));
 
-  Result := @FValue[Idx];
+
+{ TkvSetValue }
+
+constructor TkvSetValue.Create;
+begin
+  inherited Create;
+  FValue := TkvStringHashList.Create(True, False, False);
+end;
+
+constructor TkvSetValue.Create(const Value: TkvStringHashList);
+begin
+  inherited Create;
+  FValue := Value;
+end;
+
+destructor TkvSetValue.Destroy;
+begin
+  FreeAndNil(FValue);
+  inherited Destroy;
+end;
+
+function TkvSetValue.Duplicate: AkvValue;
+var
+  V : TkvStringHashList;
+  P : PkvStringHashListItem;
+  I : TkvStringHashListIterator;
+begin
+  V := TkvStringHashList.Create(True, False, False);
+  P := FValue.IterateFirst(I);
+  while Assigned(P) do
+    begin
+      V.Add(P^.Key, nil);
+      P := FValue.IterateNext(I);
+    end;
+  Result := TkvSetValue.Create(V);
+end;
+
+function TkvSetValue.GetAsString: String;
+var
+  S : String;
+  P : PkvStringHashListItem;
+  I : TkvStringHashListIterator;
+  F : Boolean;
+begin
+  S := 'SETOF([';
+  P := FValue.IterateFirst(I);
+  F := True;
+  while Assigned(P) do
+    begin
+      if F then
+        F := False
+      else
+        S := S + ',';
+      S := S + '"' + ReplaceStr(P^.Key, '"', '""') + '"';
+      P := FValue.IterateNext(I);
+    end;
+  S := S + '])';
+  Result := S;
+end;
+
+function TkvSetValue.GetTypeId: Byte;
+begin
+  Result := KV_Value_TypeId_Set;
+end;
+
+function TkvSetValue.GetSerialSize: Integer;
+var
+  L : Integer;
+  R : Integer;
+  P : PkvStringHashListItem;
+  I : TkvStringHashListIterator;
+begin
+  L := FValue.Count;
+  R := kvVarWord32EncodedSize(L);
+  P := FValue.IterateFirst(I);
+  while Assigned(P) do
+    begin
+      L := Length(P^.Key);
+      Inc(R, kvVarWord32EncodedSize(L) + L * SizeOf(Char));
+      P := FValue.IterateNext(I);
+    end;
+  Result := R;
+end;
+
+function TkvSetValue.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
+var
+  P : PByte;
+  L : Integer;
+  M : Int32;
+  F : Integer;
+  I : Integer;
+  N : Integer;
+  T : Int32;
+  Itm : PkvStringHashListItem;
+  Itr : TkvStringHashListIterator;
+begin
+  P := @Buf;
+  L := BufSize;
+  M := FValue.Count;
+  F := kvVarWord32EncodeBuf(M, P^, L);
+  Inc(P, F);
+  Dec(L, F);
+  Itm := FValue.IterateFirst(Itr);
+  for I := 0 to M - 1 do
+    begin
+      Assert(Assigned(Itm));
+      T := Length(Itm^.Key);
+      F := kvVarWord32EncodeBuf(T, P^, L);
+      Inc(P, F);
+      Dec(L, F);
+      N := T * SizeOf(Char);
+      if L < N then
+        raise EkvValue.Create(SInvalidBufferSize);
+      if T > 0 then
+        Move(PChar(Itm^.Key)^, P^, N);
+      Inc(P, N);
+      Dec(L, N);
+      Itm := FValue.IterateNext(Itr);
+    end;
+  Result := BufSize - L;
+end;
+
+function TkvSetValue.PutSerialBuf(const Buf; const BufSize: Integer): Integer;
+var
+  P : PByte;
+  L : Integer;
+  F : Integer;
+  Cnt : Word32;
+  I : Integer;
+  KeyLen : Word32;
+  Key : String;
+  M : Integer;
+begin
+  P := @Buf;
+  L := BufSize;
+  F := kvVarWord32DecodeBuf(P^, L, Cnt);
+  Inc(P, F);
+  Dec(L, F);
+  if Int32(Cnt) < 0 then
+    raise EkvValue.Create('Invalid buffer: Set count invalid');
+
+  FValue.Clear;
+  for I := 0 to Int32(Cnt) - 1 do
+    begin
+      F := kvVarWord32DecodeBuf(P^, L, KeyLen);
+      Inc(P, F);
+      Dec(L, F);
+      if Int32(KeyLen) < 0 then
+        raise EkvValue.Create('Invalid buffer: Key length invalid');
+
+      M := KeyLen * SizeOf(Char);
+      if L < M then
+        raise EkvValue.Create(SInvalidBufferSize);
+      SetLength(Key, KeyLen);
+      if KeyLen > 0 then
+        Move(P^, PChar(Key)^, M);
+      Inc(P, M);
+      Dec(L, M);
+
+      FValue.Add(Key, nil);
+    end;
+
+  Result := BufSize - L;
+end;
+
+procedure TkvSetValue.Clear;
+begin
+  FValue.Clear;
+end;
+
+procedure TkvSetValue.Add(const Key: String);
+begin
+  if FValue.KeyExists(Key) then
+    exit;
+  FValue.Add(Key, nil);
+end;
+
+procedure TkvSetValue.AddSet(const Value: TkvSetValue);
+var
+  P : PkvStringHashListItem;
+  I : TkvStringHashListIterator;
+begin
+  P := Value.FValue.IterateFirst(I);
+  while Assigned(P) do
+    begin
+      Add(P^.Key);
+      P := Value.FValue.IterateNext(I);
+    end;
+end;
+
+function TkvSetValue.Exists(const Key: String): Boolean;
+begin
+  Result := FValue.KeyExists(Key);
+end;
+
+procedure TkvSetValue.DeleteKey(const Key: String);
+begin
+  if not FValue.KeyExists(Key) then
+    exit;
+  FValue.DeleteKey(Key);
+end;
+
+procedure TkvSetValue.DeleteSet(const Value: TkvSetValue);
+var
+  P : PkvStringHashListItem;
+  I : TkvStringHashListIterator;
+begin
+  P := Value.FValue.IterateFirst(I);
+  while Assigned(P) do
+    begin
+      DeleteKey(P^.Key);
+      P := Value.FValue.IterateNext(I);
+    end;
 end;
 
 
@@ -1684,9 +1959,55 @@ end;
 { Value operators }
 
 function ValueOpPlus(const A, B: AkvValue): AkvValue;
+var
+  S : TkvSetValue;
+  L : TkvListValue;
 begin
   if (A is TkvNullValue) or (B is TkvNullValue) then
     Result := TkvNullValue.Create
+  else
+  if A is TkvSetValue then
+    if B is TkvSetValue then
+      begin
+        S := A.Duplicate as TkvSetValue;
+        S.AddSet(TkvSetValue(B));
+        Result := S;
+      end
+    else
+      begin
+        S := A.Duplicate as TkvSetValue;
+        S.Add(B.GetAsString);
+        Result := S;
+      end
+  else
+  if B is TkvSetValue then
+    begin
+      S := B.Duplicate as TkvSetValue;
+      S.Add(A.GetAsString);
+      Result := S;
+    end
+  else
+  if A is TkvListValue then
+    if B is TkvListValue then
+      begin
+        L := A.Duplicate as TkvListValue;
+        L.AddList(TkvListValue(B));
+        Result := L;
+      end
+    else
+      begin
+        L := A.Duplicate as TkvListValue;
+        L.Add(B.Duplicate);
+        Result := L;
+      end
+  else
+  if B is TkvListValue then
+    begin
+      L := TkvListValue.Create;
+      L.Add(A.Duplicate);
+      L.AddList(TkvListValue(B));
+      Result := L;
+    end
   else
   if (A is TkvBinaryValue) or (B is TkvBinaryValue) then
     Result := TkvBinaryValue.Create(kvByteArrayAppend(A.GetAsBinary, B.GetAsBinary))
@@ -1705,7 +2026,23 @@ begin
 end;
 
 function ValueOpMinus(const A, B: AkvValue): AkvValue;
+var
+  S : TkvSetValue;
 begin
+  if A is TkvSetValue then
+    if B is TkvSetValue then
+      begin
+        S := A.Duplicate as TkvSetValue;
+        S.DeleteSet(TkvSetValue(B));
+        Result := S;
+      end
+    else
+      begin
+        S := A.Duplicate as TkvSetValue;
+        S.DeleteKey(B.GetAsString);
+        Result := S;
+      end
+  else
   if (A is TkvNullValue) or (B is TkvNullValue) then
     Result := TkvNullValue.Create
   else
@@ -1843,6 +2180,9 @@ end;
 
 function ValueOpCompare(const A, B: AkvValue): Integer;
 begin
+  Assert(Assigned(A));
+  Assert(Assigned(B));
+
   if (A is TkvNullValue) and (B is TkvNullValue) then
     Result := 0
   else
@@ -1871,6 +2211,25 @@ begin
     Result := CompareInt(A.GetAsInteger, B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot compare types: %s and %s',
+        [A.ClassName, B.ClassName]);
+end;
+
+function ValueOpIn(const A, B: AkvValue): Boolean;
+begin
+  Assert(Assigned(A));
+  Assert(Assigned(B));
+
+  if B is TkvSetValue then
+    Result := TkvSetValue(B).Exists(A.GetAsString)
+  else
+  if B is TkvDictionaryValue then
+    Result := TkvDictionaryValue(B).Exists(A.GetAsString)
+  else
+  if (B is TkvListValue) and
+     ((A is TkvIntegerValue) or (A is TkvStringValue) or (A is TkvNullValue)) then
+    Result := TkvListValue(B).HasValue(A)
+  else
+    raise EkvValue.CreateFmt('Type error: Cannot apply in operator to types: %s and %s',
         [A.ClassName, B.ClassName]);
 end;
 

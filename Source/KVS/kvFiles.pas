@@ -10,6 +10,7 @@
 { 2018/02/18  0.05  Hash file cache }
 
 // Todo: Pack files
+// Todo: Blob append
 
 {$INCLUDE kvInclude.inc}
 
@@ -931,7 +932,7 @@ begin
   Assert(Rec.Version = KV_HashFileRecord_Version);
   Assert(Rec.RecordType in [hfrtEmpty, hfrtParentSlot, hfrtKeyValue,
       hfrtKeyValueWithHashCollision, hfrtDeleted]);
-  Assert(Rec.ValueType in [hfrvtNone, hfrvtShort, hfrvtLong]);
+  Assert(Rec.ValueType in [hfrvtNone, hfrvtShort, hfrvtLong, hfrvtFolder]);
 
   SeekRecord(Idx);
   FFile.WriteBuffer(Rec, KV_HashFile_RecordSize);

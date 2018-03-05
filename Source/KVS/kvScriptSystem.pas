@@ -96,13 +96,14 @@ type
     function  GetSelectedDatasetName: String; override;
 
     procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
+    procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); override;
     function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; override;
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; override;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); override;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
-              out Iterator: TkvDatasetIterator): Boolean; override;
+              const Path: String; out Iterator: TkvDatasetIterator): Boolean; override;
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; override;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; override;
     function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue; override;
@@ -210,6 +211,11 @@ type
     procedure AddRecord(const Session: TkvSession; const Dataset: TkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
+    procedure MakePath(const Session: TkvSession;
+              const DatabaseName, DatasetName, KeyPath: String); overload;
+    procedure MakePath(const Session: TkvSession; const Dataset: TkvDataset;
+              const KeyPath: String); overload;
+
     function  RecordExists(const Session: TkvSession;
               const DatabaseName, DatasetName, Key: String): Boolean; overload;
     function  RecordExists(const Session: TkvSession; const Dataset: TkvDataset;
@@ -233,6 +239,7 @@ type
 
     function  IterateRecords(const Session: TkvSession;
               const DatabaseName, DatasetName: String;
+              const Path: String;
               out Iterator: TkvDatasetIterator): Boolean;
     function  IterateNextRecord(const Session: TkvSession; var Iterator: TkvDatasetIterator): Boolean;
     function  IteratorGetKey(const Session: TkvSession; const Iterator: TkvDatasetIterator): String;
@@ -439,6 +446,17 @@ begin
         Key, Value);
 end;
 
+procedure TkvSession.MakePath(const DatabaseName, DatasetName, KeyPath: String);
+begin
+  if (DatasetName = '') and Assigned(FSelectedDataset) then
+    FSystem.MakePath(self, FSelectedDataset, KeyPath)
+  else
+    FSystem.MakePath(self,
+        UsedDatabaseName(DatabaseName),
+        UsedDatasetName(DatasetName),
+        KeyPath);
+end;
+
 function TkvSession.GetRecord(const DatabaseName, DatasetName,
          Key: String): AkvValue;
 begin
@@ -486,9 +504,9 @@ begin
 end;
 
 function TkvSession.IterateRecords(const DatabaseName, DatasetName: String;
-         out Iterator: TkvDatasetIterator): Boolean;
+         const Path: String; out Iterator: TkvDatasetIterator): Boolean;
 begin
-  Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Iterator);
+  Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path, Iterator);
 end;
 
 function TkvSession.IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
@@ -566,6 +584,11 @@ begin
   FIdentifiers.Add('UPPER', TkvScriptUpperBuiltInFunction.Create);
   FIdentifiers.Add('TRIM', TkvScriptTrimBuiltInFunction.Create);
   FIdentifiers.Add('ROUND', TkvScriptRoundBuiltInFunction.Create);
+  FIdentifiers.Add('SUBSTRING', TkvScriptSubstringBuiltInFunction.Create);
+  FIdentifiers.Add('INDEXOF', TkvScriptIndexOfBuiltInFunction.Create);
+  FIdentifiers.Add('LEFT', TkvScriptLeftBuiltInFunction.Create);
+  FIdentifiers.Add('RIGHT', TkvScriptRightBuiltInFunction.Create);
+  FIdentifiers.Add('SETOF', TkvScriptSetOfBuiltInFunction.Create);
 end;
 
 destructor TkvScriptSystemScope.Destroy;
@@ -848,7 +871,7 @@ var
   SpN : String;
 begin
   SI := FSystem.SysInfoDataset;
-  if SI.IterateRecords(It) then
+  if SI.IterateRecords('', It) then
     repeat
       Key := SI.IteratorGetKey(It);
       KeyP := Key.Split([':'], 3);
@@ -1073,6 +1096,27 @@ begin
   end;
 end;
 
+procedure TkvScriptSystem.MakePath(const Session: TkvSession; const DatabaseName, DatasetName, KeyPath: String);
+begin
+  FExecLock.Acquire;
+  try
+    FSystem.MakePath(DatabaseName, DatasetName, KeyPath);
+  finally
+    FExecLock.Release;
+  end;
+end;
+
+procedure TkvScriptSystem.MakePath(const Session: TkvSession; const Dataset: TkvDataset;
+          const KeyPath: String);
+begin
+  FExecLock.Acquire;
+  try
+    FSystem.MakePath(Dataset, KeyPath);
+  finally
+    FExecLock.Release;
+  end;
+end;
+
 function TkvScriptSystem.RecordExists(const Session: TkvSession; const DatabaseName, DatasetName, Key: String): Boolean;
 begin
   FExecLock.Acquire;
@@ -1162,11 +1206,12 @@ end;
 
 function TkvScriptSystem.IterateRecords(const Session: TkvSession;
          const DatabaseName, DatasetName: String;
+         const Path: String;
          out Iterator: TkvDatasetIterator): Boolean;
 begin
   FExecLock.Acquire;
   try
-    Result := FSystem.IterateRecords(DatabaseName, DatasetName, Iterator);
+    Result := FSystem.IterateRecords(DatabaseName, DatasetName, Path, Iterator);
   finally
     FExecLock.Release;
   end;

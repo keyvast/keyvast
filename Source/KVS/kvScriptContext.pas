@@ -58,12 +58,14 @@ type
     function  GetSelectedDatasetName: String; virtual; abstract;
 
     procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); virtual; abstract;
+    procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); virtual; abstract;
     function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; virtual; abstract;
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; virtual; abstract;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); virtual; abstract;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); virtual; abstract;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
+              const Path: String;
               out Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; virtual; abstract;

@@ -45,6 +45,158 @@ begin
   {$ENDIF}
 end;
 
+procedure Test_Structs;
+begin
+  Assert(KV_SystemFile_HeaderSize = 1024);
+  Assert(KV_DatabaseListFile_HeaderSize = 1024);
+  Assert(KV_DatabaseListFile_RecordSize = 1024);
+  Assert(KV_DatasetListFile_HeaderSize = 1024);
+  Assert(KV_DatasetListFile_RecordSize = 1024);
+  Assert(KV_HashFile_HeaderSize = 1024);
+  Assert(KV_HashFile_RecordSize = 64);
+  Assert(KV_BlobFile_HeaderSize = 1024);
+  Assert(KV_BlobFile_RecordHeaderSize = 16);
+end;
+
+procedure Test_Hash1;
+const
+  TestN = 10000;
+type
+  TTestArray = array[0..TestN - 1] of UInt64;
+  PTestArray = ^TTestArray;
+var
+  I, J : Integer;
+  P : PTestArray;
+  F : UInt64;
+  Q : PUInt64;
+begin
+  New(P);
+  try
+    for I := 0 to TestN - 1 do
+      P^[I] := kvLevel1HashString(IntToStr(I), True);
+    for I := 0 to TestN - 2 do
+      begin
+        F := P^[I];
+        Q := @P^[I + 1];
+        for J := I + 1 to TestN - 1 do
+          begin
+            Assert(F <> Q^);
+            Inc(Q);
+          end;
+      end;
+  finally
+    Dispose(P);
+  end;
+end;
+
+procedure Test_Hash2;
+var
+  I : Integer;
+  H1, H2 : UInt64;
+begin
+  // kvLevel1HashString
+  Assert(kvLevel1HashString('', True) = kvLevel1HashString('', False));
+
+  Assert(kvLevel1HashString('1', True) = kvLevel1HashString('1', True));
+  Assert(kvLevel1HashString('1', False) = kvLevel1HashString('1', False));
+
+  Assert(kvLevel1HashString('a', True) <> kvLevel1HashString('A', True));
+  Assert(kvLevel1HashString('a', True) = $CC866A5F640543AC);
+  Assert(kvLevel1HashString('A', True) = $1EB43D47A289974);
+
+  Assert(kvLevel1HashString('a', False) = kvLevel1HashString('A', False));
+  Assert(kvLevel1HashString('a', False) = $1EB43D47A289974);
+  Assert(kvLevel1HashString('A', False) = $1EB43D47A289974);
+
+  Assert(kvLevel1HashString('ab', True) <> kvLevel1HashString('ba', True));
+
+  Assert(kvLevel1HashString('Hello world', True) = $EE34E4B5EF1D9331);
+  Assert(kvLevel1HashString('Hello world', False) = $7EDF79A0B38B1ACA);
+
+  // kvLevelNHash
+  H1 := $100;
+  H2 := $200;
+  for I := 1 to 1000000 do
+    begin
+      H1 := kvLevelNHash(H1);
+      H2 := kvLevelNHash(H2);
+      Assert(H1 <> $100);
+      Assert(H2 <> $200);
+      Assert(H1 <> H2);
+    end;
+end;
+
+procedure Test_HashListHashString;
+begin
+  Assert(kvhlHashString('a') = $C711B4BF);
+  Assert(kvhlHashString('b') = $CCAA8AD3);
+  Assert(kvhlHashString('i') = $EADA25DF);
+  Assert(kvhlHashString('ab') = $707B03CE);
+  Assert(kvhlHashString('abc') = $82DE6531);
+  Assert(kvhlHashString(#0#0#0#0) = $6271041F);
+  Assert(kvhlHashString('ab') <> kvhlHashString('ba'));
+end;
+
+procedure Test_HashList;
+var
+  A : TkvStringHashList;
+  I : Integer;
+  It : TkvStringHashListIterator;
+begin
+  A := TkvStringHashList.Create(True, True, False);
+  try
+    Assert(A.Count = 0);
+    A.Add('a', A);
+    Assert(A.Count = 1);
+    Assert(A.RequireValue('a') = A);
+    for I := 1 to 100000 do
+      A.Add(IntToStr(I), A);
+    Assert(A.Count = 100001);
+    Assert(A.KeyExists('1'));
+    A.DeleteKey('1');
+    Assert(A.Count = 100000);
+    Assert(not A.KeyExists('1'));
+    Assert(Assigned(A.IterateFirst(It)));
+    for I := 1 to 99999 do
+      Assert(Assigned(A.IterateNext(It)));
+    Assert(not Assigned(A.IterateNext(It)));
+    A.Clear;
+    Assert(A.Count = 0);
+  finally
+    A.Free;
+  end;
+end;
+
+procedure Test_VarWord32;
+var
+  Buf : array[0..3] of Byte;
+  A : Word32;
+begin
+  Assert(kvVarWord32EncodedSize(0) = 1);
+  Assert(kvVarWord32EncodedSize($7F) = 1);
+  Assert(kvVarWord32EncodedSize($80) = 4);
+
+  Assert(kvVarWord32EncodeBuf(1, Buf, 4) = 1);
+  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 1);
+  Assert(A = 1);
+
+  Assert(kvVarWord32EncodeBuf($7F, Buf, 4) = 1);
+  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 1);
+  Assert(A = $7F);
+
+  Assert(kvVarWord32EncodeBuf($80, Buf, 4) = 4);
+  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 4);
+  Assert(A = $80);
+
+  Assert(kvVarWord32EncodeBuf($81, Buf, 4) = 4);
+  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 4);
+  Assert(A = $81);
+
+  Assert(kvVarWord32EncodeBuf($12345678, Buf, 4) = 4);
+  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 4);
+  Assert(A = $12345678);
+end;
+
 procedure Test_System;
 var
   Sys : TkvSystem;
@@ -204,7 +356,7 @@ begin
       // iterate records
       Ds.DeleteRecord('testkey');
       Ds.DeleteRecord('102');
-      Assert(Ds.IterateRecords(It));
+      Assert(Ds.IterateRecords('', It));
       for I := 1 to TestN1 - 13 do
         begin
           S := Ds.IteratorGetKey(It);
@@ -415,55 +567,7 @@ begin
   end;
 end;
 
-procedure Test_Script;
-var
-  P : TkvScriptParser;
-  Sys : TkvSystem;
-  MSys : TkvScriptSystem;
-  Ses : TkvSession;
-
-  procedure Exec(const S: String; const ValS: String = '');
-  var
-    N : AkvScriptNode;
-    V : AkvValue;
-  begin
-    N := P.Parse(S);
-    try
-      if N is AkvScriptStatement then
-        begin
-          V := AkvScriptStatement(N).Execute(Ses.ScriptContext);
-          if Assigned(V) then
-            try
-              Assert(V.AsString = ValS);
-            finally
-              V.Free;
-            end
-          else
-            Assert(ValS = '');
-        end
-      else
-      if N is AkvScriptExpression then
-        begin
-          V := AkvScriptExpression(N).Evaluate(Ses.ScriptContext);
-          if Assigned(V) then
-            try
-              Assert(V.AsString = ValS);
-            finally
-              V.Free;
-            end
-          else
-            Assert(ValS = '');
-        end
-      else
-        Assert(ValS = '');
-    finally
-      N.Free;
-    end;
-  end;
-
-var
-  S : String;
-
+procedure Delete_Script_Database;
 begin
   DeleteFile(BasePath + 'testsys.kvsys');
   DeleteFile(BasePath + 'testsys.kvdbl');
@@ -474,6 +578,62 @@ begin
   DeleteFile(BasePath + 'testsys.TESTDB.testds.kvh');
   DeleteFile(BasePath + 'testsys.TESTDB.testds.k.kvbl');
   DeleteFile(BasePath + 'testsys.TESTDB.testds.v.kvbl');
+end;
+
+procedure Check_Script_Result(const Ses: TkvSession; const N: AkvScriptNode; const ValS: String);
+var
+  V : AkvValue;
+begin
+  if N is AkvScriptStatement then
+    begin
+      V := AkvScriptStatement(N).Execute(Ses.ScriptContext);
+      if Assigned(V) then
+        try
+          Assert(V.AsString = ValS);
+        finally
+          V.Free;
+        end
+      else
+        Assert(ValS = '');
+    end
+  else
+  if N is AkvScriptExpression then
+    begin
+      V := AkvScriptExpression(N).Evaluate(Ses.ScriptContext);
+      if Assigned(V) then
+        try
+          Assert(V.AsString = ValS);
+        finally
+          V.Free;
+        end
+      else
+        Assert(ValS = '');
+    end
+  else
+    Assert(ValS = '');
+end;
+
+procedure Test_Script_Expressions;
+var
+  P : TkvScriptParser;
+  Sys : TkvSystem;
+  MSys : TkvScriptSystem;
+  Ses : TkvSession;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
+    end;
+  end;
+
+begin
+  Delete_Script_Database;
 
   P := TkvScriptParser.Create;
   Sys := TkvSystem.Create(BasePath, 'testsys');
@@ -481,8 +641,6 @@ begin
   try
     MSys.OpenNew;
     Ses := MSys.AddSession;
-
-    // Expressions
 
     Exec('EVAL 1+2', '3');
     Exec('EVAL 1 + 2 * 3 + 4', '11');
@@ -519,8 +677,18 @@ begin
 
     Exec('EVAL TRIM(" Hello world  ")', 'Hello world');
 
+    Exec('EVAL SUBSTRING("Hello world", 2, 3)', 'llo');
+
+    Exec('EVAL INDEXOF("Hell", "Hello world")', '0');
+    Exec('EVAL INDEXOF("world", "Hello world")', '6');
+    Exec('EVAL INDEXOF("abc", "Hello world")', '-1');
+
+    Exec('EVAL LEFT("Hello", 4) = "Hell"', 'true');
+    Exec('EVAL RIGHT("Hello", 4) = "ello"', 'true');
+
     Exec('EVAL ROUND(1.1)', '1');
     Exec('EVAL ROUND(1.5)', '2');
+    Exec('EVAL ROUND(1.5) + ROUND(5.5)', '8');
 
     Exec('SET @a = GETDATE()');
     Exec('SET @a = GETDATE');
@@ -541,7 +709,102 @@ begin
     Exec('SET @b = "EVAL @a"');
     Exec('EXEC @b', '1');
 
-    // Database
+    Exec('SET @a = [1,2,3]');
+    Exec('EVAL @a[1]', '2');
+    Exec('EVAL 2 IN @a', 'true');
+    Exec('EVAL 4 IN @a', 'false');
+    Exec('EVAL "2" IN @a', 'false');
+    Exec('EVAL "a" IN @a', 'false');
+
+    Exec('SET @a = [1,[4,5],3]');
+    Exec('EVAL @a[1]', '[4,5]');
+    Exec('EVAL @a[1][1]', '5');
+    Exec('EVAL 1 IN @a', 'true');
+    Exec('EVAL 4 IN @a', 'false');
+
+    Exec('SET @a = [1,2] + 3');
+    Exec('EVAL @a', '[1,2,3]');
+
+    Exec('SET @a = [1,2] + [3,4]');
+    Exec('EVAL @a', '[1,2,3,4]');
+
+    Exec('SET @a = [1,2] + [[3,4]]');
+    Exec('EVAL @a', '[1,2,[3,4]]');
+
+    Exec('SET @a = {a:1,b:2,c:3}');
+    Exec('EVAL @a.b', '2');
+
+    Exec('SET @a = {a:1,b:{b1:1,b2:2},c:3}');
+    Exec('EVAL @a.b', '{b1:1,b2:2}');
+    Exec('EVAL @a.b.b2', '2');
+    Exec('EVAL "b" in @a', 'true');
+    Exec('EVAL "d" in @a', 'false');
+
+    Exec('SET @a = SETOF(["a", "b", "c"])');
+    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+    Exec('EVAL "a" IN @a', 'true');
+    Exec('EVAL "d" IN @a', 'false');
+    Exec('SET @a = @a + "d"');
+    Exec('EVAL @a', 'SETOF(["b","c","d","a"])');
+    Exec('EVAL "a" IN @a', 'true');
+    Exec('EVAL "d" IN @a', 'true');
+    Exec('SET @a = @a - "d"');
+    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+    Exec('EVAL "d" IN @a', 'false');
+
+    Exec('SET @a = SETOF("a")');
+    Exec('EVAL @a', 'SETOF(["a"])');
+    Exec('SET @a = @a + SETOF(["a","b","c"])');
+    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+
+    Exec('SET @a = SETOF("a","b","c")');
+    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+
+    Exec('SET @a = SETOF()');
+    Exec('EVAL @a', 'SETOF([])');
+
+    Ses.Close;
+    MSys.Close;
+
+    MSys.Delete;
+  finally
+    MSys.Free;
+    Sys.Free;
+    P.Free;
+  end;
+end;
+
+procedure Test_Script_Database;
+var
+  P : TkvScriptParser;
+  Sys : TkvSystem;
+  MSys : TkvScriptSystem;
+  Ses : TkvSession;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
+    end;
+  end;
+
+var
+  S : String;
+
+begin
+  Delete_Script_Database;
+
+  P := TkvScriptParser.Create;
+  Sys := TkvSystem.Create(BasePath, 'testsys');
+  MSys := TkvScriptSystem.Create(Sys);
+  try
+    MSys.OpenNew;
+    Ses := MSys.AddSession;
 
     Exec('CREATE DATABASE TESTDB');
     Exec('CREATE DATASET TESTDB:testds');
@@ -594,6 +857,12 @@ begin
     Exec('SELECT 1', '["john"]');
     Exec('UPDATE 1 []');
     Exec('SELECT 1', '[]');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 SETOF(["john","peter"])');
+    Exec('SELECT 1', 'SETOF(["peter","john"])');
+    Exec('UPDATE 1 SETOF()');
+    Exec('SELECT 1', 'SETOF([])');
     Exec('DELETE 1');
 
     Exec('INSERT 1 {name:"john",age:10}');
@@ -649,6 +918,10 @@ begin
     Exec('SELECT 1', '[5,2,9,12,13]');
     Exec('INSERT 1[5] [1,2]');
     Exec('SELECT 1', '[5,2,9,12,13,[1,2]]');
+    Exec('DELETE 1[5]');
+    Exec('SELECT 1', '[5,2,9,12,13]');
+    Exec('DELETE 1[1]');
+    Exec('SELECT 1', '[5,9,12,13]');
     Exec('DELETE 1');
 
     Exec('INSERT 1 true');
@@ -803,17 +1076,6 @@ begin
     Exec('DELETE 3');
     Exec('DELETE 4');
 
-    Exec('INSERT 1/2/3 1');
-    Exec('SELECT 1/2/3 + 1', '2');
-    Exec('SELECT "1/2/3"', '1');
-    Exec('SELECT testds\1/2/3', '1');
-    Exec('SELECT TESTDB:testds\1/2/3', '1');
-    Exec('UPDATE 1/2/3 2');
-    Exec('SELECT 1/2/3', '2');
-    Exec('SELECT 1/2/3 / 2', '1');
-    Exec('EVAL EXISTS 1/2/3', 'true');
-    Exec('DELETE 1/2/3');
-
     Exec('CREATE PROCEDURE proc1(@par1, @par2) BEGIN RETURN @par1 + @par2 END');
     Exec('EVAL proc1(1, 2) + proc1(5, 6)', '14');
 
@@ -838,7 +1100,7 @@ begin
     Exec('EVAL UNIQUE_ID TESTDB:testds', '2');
 
     Exec('USE TESTDB:testds');
-    Exec('INSERT 1 "Persist"');
+    Exec('INSERT P1 "Persist"');
 
     Ses.Close;
     MSys.Close;
@@ -847,7 +1109,7 @@ begin
     Ses := MSys.AddSession;
 
     Exec('USE TESTDB:testds');
-    Exec('SELECT 1', 'Persist');
+    Exec('SELECT P1', 'Persist');
 
     Exec('EVAL UNIQUE_ID', '3');
     Exec('EVAL UNIQUE_ID TESTDB', '3');
@@ -893,144 +1155,179 @@ begin
   end;
 end;
 
-procedure Test_Structs;
-begin
-  Assert(KV_SystemFile_HeaderSize = 1024);
-  Assert(KV_DatabaseListFile_HeaderSize = 1024);
-  Assert(KV_DatabaseListFile_RecordSize = 1024);
-  Assert(KV_DatasetListFile_HeaderSize = 1024);
-  Assert(KV_DatasetListFile_RecordSize = 1024);
-  Assert(KV_HashFile_HeaderSize = 1024);
-  Assert(KV_HashFile_RecordSize = 64);
-  Assert(KV_BlobFile_HeaderSize = 1024);
-  Assert(KV_BlobFile_RecordHeaderSize = 16);
-end;
-
-procedure Test_Hash1;
-const
-  TestN = 10000;
-type
-  TTestArray = array[0..TestN - 1] of UInt64;
-  PTestArray = ^TTestArray;
+procedure Test_Script_Folders;
 var
-  I, J : Integer;
-  P : PTestArray;
-  F : UInt64;
-  Q : PUInt64;
-begin
-  New(P);
-  try
-    for I := 0 to TestN - 1 do
-      P^[I] := kvLevel1HashString(IntToStr(I), True);
-    for I := 0 to TestN - 2 do
-      begin
-        F := P^[I];
-        Q := @P^[I + 1];
-        for J := I + 1 to TestN - 1 do
-          begin
-            Assert(F <> Q^);
-            Inc(Q);
-          end;
-      end;
-  finally
-    Dispose(P);
-  end;
+  P : TkvScriptParser;
+  Sys : TkvSystem;
+  MSys : TkvScriptSystem;
+  Ses : TkvSession;
 
-  Assert(kvLevel1HashString('a', True) = $CC866A5F640543AC);
-  Assert(kvLevel1HashString('A', True) = $1EB43D47A289974);
-
-  Assert(kvLevel1HashString('a', False) = $1EB43D47A289974);
-  Assert(kvLevel1HashString('A', False) = $1EB43D47A289974);
-end;
-
-procedure Test_Hash2;
-var
-  I : Integer;
-  H1, H2 : UInt64;
-begin
-  // kvLevel1HashString
-  Assert(kvLevel1HashString('1', True) = kvLevel1HashString('1', True));
-  // kvLevelNHash
-  H1 := $100;
-  H2 := $200;
-  for I := 1 to 1000000 do
-    begin
-      H1 := kvLevelNHash(H1);
-      H2 := kvLevelNHash(H2);
-      Assert(H1 <> $100);
-      Assert(H2 <> $200);
-      Assert(H1 <> H2);
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
     end;
-end;
-
-procedure Test_HashListHashString;
-begin
-  Assert(kvhlHashString('a') = $C711B4BF);
-  Assert(kvhlHashString('b') = $CCAA8AD3);
-  Assert(kvhlHashString('i') = $EADA25DF);
-  Assert(kvhlHashString('ab') = $707B03CE);
-  Assert(kvhlHashString('abc') = $82DE6531);
-  Assert(kvhlHashString(#0#0#0#0) = $6271041F);
-end;
-
-procedure Test_HashList;
-var
-  A : TkvStringHashList;
-  I : Integer;
-  It : TkvStringHashListIterator;
-begin
-  A := TkvStringHashList.Create(True, True, False);
-  try
-    Assert(A.Count = 0);
-    A.Add('a', A);
-    Assert(A.Count = 1);
-    Assert(A.RequireValue('a') = A);
-    for I := 1 to 1000 do
-      A.Add(IntToStr(I), A);
-    Assert(A.Count = 1001);
-    Assert(A.KeyExists('1'));
-    A.DeleteKey('1');
-    Assert(A.Count = 1000);
-    Assert(not A.KeyExists('1'));
-    Assert(Assigned(A.IterateFirst(It)));
-    for I := 1 to 999 do
-      Assert(Assigned(A.IterateNext(It)));
-    Assert(not Assigned(A.IterateNext(It)));
-    A.Clear;
-    Assert(A.Count = 0);
-  finally
-    A.Free;
   end;
-end;
 
-procedure Test_VarWord32;
-var
-  Buf : array[0..3] of Byte;
-  A : Word32;
 begin
-  Assert(kvVarWord32EncodedSize(0) = 1);
-  Assert(kvVarWord32EncodedSize($7F) = 1);
-  Assert(kvVarWord32EncodedSize($80) = 4);
+  Delete_Script_Database;
 
-  Assert(kvVarWord32EncodeBuf(1, Buf, 4) = 1);
-  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 1);
-  Assert(A = 1);
+  P := TkvScriptParser.Create;
+  Sys := TkvSystem.Create(BasePath, 'testsys');
+  MSys := TkvScriptSystem.Create(Sys);
+  try
+    MSys.OpenNew;
+    Ses := MSys.AddSession;
 
-  Assert(kvVarWord32EncodeBuf($7F, Buf, 4) = 1);
-  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 1);
-  Assert(A = $7F);
+    Exec('CREATE DATABASE TESTDB');
+    Exec('CREATE DATASET TESTDB:testds');
+    Exec('USE TESTDB:testds');
 
-  Assert(kvVarWord32EncodeBuf($80, Buf, 4) = 4);
-  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 4);
-  Assert(A = $80);
+    Exec('INSERT 1/2/3 3');
+    Exec('INSERT 1/2/1 1');
+    Exec('INSERT 1/2/2 2');
+    Exec('SELECT 1/2/1', '1');
+    Exec('SELECT 1/2/2', '2');
+    Exec('SELECT 1/2/3', '3');
+    Exec('SELECT "1/2/3"', '3');
+    Exec('SELECT testds\1/2/3', '3');
+    Exec('SELECT TESTDB:testds\1/2/3', '3');
 
-  Assert(kvVarWord32EncodeBuf($81, Buf, 4) = 4);
-  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 4);
-  Assert(A = $81);
+    Exec('UPDATE 1/2/3 2');
+    Exec('SELECT 1/2/3', '2');
+    Exec('SELECT 1/2/3 / 2', '1');
 
-  Assert(kvVarWord32EncodeBuf($12345678, Buf, 4) = 4);
-  Assert(kvVarWord32DecodeBuf(Buf, 4, A) = 4);
-  Assert(A = $12345678);
+    Exec('EVAL EXISTS 1/2/1', 'true');
+    Exec('EVAL EXISTS 1/2/2', 'true');
+    Exec('EVAL EXISTS 1/2/3', 'true');
+    Exec('EVAL EXISTS 1/2/4', 'false');
+
+    Exec('EVAL EXISTS 1/2', 'true');
+    Exec('EVAL EXISTS 1', 'true');
+
+    Exec('DELETE 1/2/3');
+    Exec('EVAL EXISTS 1/2/1', 'true');
+    Exec('EVAL EXISTS 1/2/2', 'true');
+    Exec('EVAL EXISTS 1/2/3', 'false');
+    Exec('EVAL EXISTS 1/2', 'true');
+    Exec('EVAL EXISTS 1', 'true');
+
+    Exec('DELETE 1');
+    Exec('EVAL EXISTS 1/2/1', 'false');
+    Exec('EVAL EXISTS 1/2/2', 'false');
+    Exec('EVAL EXISTS 1/2/3', 'false');
+    Exec('EVAL EXISTS 1/2', 'false');
+    Exec('EVAL EXISTS 1', 'false');
+
+    Exec('INSERT 1/2/1 1');
+    Exec('INSERT 1/2/2 2');
+    Exec('INSERT 1/2/3 3');
+    Exec('DELETE 1/2');
+    Exec('EVAL EXISTS 1/2/1', 'false');
+    Exec('EVAL EXISTS 1/2/2', 'false');
+    Exec('EVAL EXISTS 1/2/3', 'false');
+    Exec('EVAL EXISTS 1/2', 'false');
+    Exec('EVAL EXISTS 1', 'true');
+
+    Exec('INSERT 1/1/1 1');
+    Exec('INSERT 1/2 2');
+    Exec('INSERT 1/3/3/3 3');
+
+    Exec('ITERATE_RECORDS TESTDB:testds @a');
+    Exec('EVAL @a', 'true');
+    Exec('SET @b1 = ITERATOR_KEY @a');
+    Exec('EVAL (@b1 = "1/1/1") OR (@b1 = "1/2") OR (@b1 = "1/3/3/3")', 'true');
+    Exec('EVAL INTEGER(RIGHT(@b1, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'true');
+    Exec('SET @b2 = ITERATOR_KEY @a');
+    Exec('EVAL @b2 <> @b1', 'true');
+    Exec('EVAL (@b1 = "1/1/1") OR (@b1 = "1/2") OR (@b1 = "1/3/3/3")', 'true');
+    Exec('EVAL INTEGER(RIGHT(@b2, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'true');
+    Exec('SET @b3 = ITERATOR_KEY @a');
+    Exec('EVAL @b3 <> @b2', 'true');
+    Exec('EVAL (@b1 = "1/1/1") OR (@b1 = "1/2") OR (@b1 = "1/3/3/3")', 'true');
+    Exec('EVAL INTEGER(RIGHT(@b3, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'false');
+
+    Exec('ITERATE_RECORDS TESTDB:testds\1/1 @a');
+    Exec('EVAL @a', 'true');
+    Exec('EVAL ITERATOR_KEY @a', '1/1/1');
+    Exec('EVAL ITERATOR_VALUE @a', '1');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'false');
+
+    Exec('ITERATE_RECORDS TESTDB:testds\1/3 @a');
+    Exec('EVAL @a', 'true');
+    Exec('EVAL ITERATOR_KEY @a', '1/3/3/3');
+    Exec('EVAL ITERATOR_VALUE @a', '3');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'false');
+
+    Exec('ITERATE_RECORDS TESTDB:testds\1/3/3 @a');
+    Exec('EVAL @a', 'true');
+    Exec('EVAL ITERATOR_KEY @a', '1/3/3/3');
+    Exec('EVAL ITERATOR_VALUE @a', '3');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'false');
+
+    Exec('DELETE 1');
+    Exec('ITERATE_RECORDS TESTDB:testds @a');
+    Exec('EVAL @a', 'false');
+
+    Exec('MKPATH 1/2/');
+    Exec('EVAL EXISTS 1', 'true');
+    Exec('EVAL EXISTS 1/2', 'true');
+    Exec('EVAL EXISTS 1/2/3', 'false');
+    Exec('DELETE 1');
+
+    Exec('MKPATH 1/2');
+    Exec('EVAL EXISTS 1', 'true');
+    Exec('EVAL EXISTS 1/2', 'true');
+    Exec('EVAL EXISTS 1/2/3', 'false');
+    Exec('DELETE 1');
+
+    Exec('MKPATH 1');
+    Exec('MKPATH 1/2');
+    Exec('EVAL EXISTS 1', 'true');
+    Exec('EVAL EXISTS 1/2', 'true');
+    Exec('EVAL EXISTS 1/2/3', 'false');
+
+    Exec('INSERT 1/2/3 3');
+    Exec('INSERT 1/2/1 1');
+    Exec('INSERT 1/2/2 2');
+
+    Exec('SELECT 1/2/3', '3');
+    Exec('SELECT 1/2', '{2:2,3:3,1:1}');
+    Exec('SELECT 1', '{2:{2:2,3:3,1:1}}');
+    Exec('SELECT 1.2', '{2:2,3:3,1:1}');
+    Exec('SELECT 1.2.3', '3');
+
+    Exec('SELECT /', '{1:{2:{2:2,3:3,1:1}}}');
+
+    Exec('SELECT /.1', '{2:{2:2,3:3,1:1}}');
+    Exec('SELECT /.1.2', '{2:2,3:3,1:1}');
+    Exec('SELECT /.1.2.3', '3');
+
+    Exec('DELETE 1');
+
+    Ses.Close;
+    MSys.Close;
+
+    MSys.Delete;
+  finally
+    MSys.Free;
+    Sys.Free;
+    P.Free;
+  end;
 end;
 
 procedure Test;
@@ -1039,11 +1336,13 @@ begin
   Test_HashList;
   Test_Hash1;
   Test_Hash2;
+  Test_VarWord32;
   Test_Structs;
   Test_System;
   Test_Parser;
-  Test_Script;
-  Test_VarWord32;
+  Test_Script_Expressions;
+  Test_Script_Database;
+  Test_Script_Folders;
 end;
 
 end.

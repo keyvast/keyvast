@@ -110,9 +110,12 @@ begin
       if not CaseSensitive then
         if (F >= Ord('a')) and (F <= Ord('z')) then
           F := F - 32;
-      F := F xor Word32(F shl 7) xor Word32(F shl 14) xor Word32(F shl 21) xor Word32(F shl 28);
+      F := F xor Word32(UInt64(F) shl 7) xor
+                 Word32(UInt64(F) shl 14) xor
+                 Word32(UInt64(F) shl 21) xor
+                 Word32(UInt64(F) shl 28);
       H := H xor F;
-      H := Word32(UInt64(H shl 5) + (H shr 5));
+      H := Word32((UInt64(H) shl 5) + (H shr 5));
     end;
   Result := H;
 end;

@@ -7,6 +7,7 @@
 { 2018/02/08  0.02  Dataset list file }
 { 2018/02/09  0.03  Hash file }
 { 2018/02/10  0.04  Blob file }
+{ 2018/03/03  0.05  Folders support in hash file }
 
 {$INCLUDE kvInclude.inc}
 
@@ -293,7 +294,7 @@ const
   KV_HashFileRecord_Magic   = $A507;
   KV_HashFileRecord_Version = 1;
 
-  KV_HashFileRecord_SlotShortKeyLength = 8;
+  KV_HashFileRecord_SlotShortKeyLength = 10;
   KV_HashFileRecord_SlotShortValueSize = 16;
 
 type
@@ -302,28 +303,30 @@ type
       hfrtParentSlot,
       hfrtKeyValue,
       hfrtKeyValueWithHashCollision,
-      hfrtDeleted,
-      hfrtFolder // todo
+      hfrtDeleted
     );
   TkvHashFileRecordValueType = (
       hfrvtNone,
       hfrvtShort,
-      hfrvtLong
+      hfrvtLong,
+      hfrvtFolder
     );
   TkvHashFileRecord = packed record
-    Magic                : Word16;
-    Version              : Byte;
-    RecordType           : TkvHashFileRecordType;
-    ChildSlotRecordIndex : Word32;
-    KeyHash              : UInt64;
-    KeyLength            : Word16;
-    KeyShort             : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
-    KeyLongChainIndex    : Word32;
-    ValueType            : TkvHashFileRecordValueType;
-    ValueTypeId          : Byte;
-    ValueSize            : Word32;
-    ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte;
-    ValueLongChainIndex  : Word32;
+    Magic                 : Word16;
+    Version               : Byte;
+    RecordType            : TkvHashFileRecordType;
+    ChildSlotRecordIndex  : Word32;
+    KeyHash               : UInt64;
+    KeyLength             : Word16;
+    KeyShort              : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
+    KeyLongChainIndex     : Word32;
+    ValueType             : TkvHashFileRecordValueType;
+    ValueTypeId           : Byte;
+    ValueSize             : Word32;
+    case Integer of
+      0 : (ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte);
+      1 : (ValueLongChainIndex  : Word32);
+      2 : (ValueFolderBaseIndex : Word32);
   end;
 
 const

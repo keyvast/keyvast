@@ -3,10 +3,7 @@
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/03/01  0.01  Initial version }
-
-// Todo: String - LEFT, RIGHT, SUBSTRING, INDEXOF
-// Todo: DateTime - DATE(y,m,d) TIME(h,m,s,z)
-// Todo: Math - ROUND
+{ 2018/03/03  0.02  Additional string functions }
 
 {$INCLUDE kvInclude.inc}
 
@@ -28,7 +25,6 @@ type
 
   AkvScriptProcedureValue = class
   public
-    function  GetParamCount: Integer; virtual; abstract;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; virtual; abstract;
   end;
@@ -40,7 +36,6 @@ type
     FResult : TkvIntegerValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -52,7 +47,6 @@ type
     FResult : TkvIntegerValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -64,7 +58,6 @@ type
     FResult : TkvFloatValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -76,7 +69,6 @@ type
     FResult : TkvStringValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -88,7 +80,6 @@ type
     FResult : TkvDateTimeValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -100,7 +91,6 @@ type
     FResult : TkvBinaryValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -112,7 +102,6 @@ type
     FResult : TkvBinaryValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -124,7 +113,6 @@ type
     FResult : TkvStringValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -136,7 +124,6 @@ type
     FResult : TkvStringValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -148,7 +135,6 @@ type
     FResult : TkvDateTimeValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -160,7 +146,6 @@ type
     FResult : AkvValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -172,7 +157,6 @@ type
     FResult : TkvStringValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -184,7 +168,6 @@ type
     FResult : TkvStringValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -196,7 +179,6 @@ type
     FResult : TkvStringValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -208,7 +190,61 @@ type
     FResult : TkvIntegerValue;
   public
     destructor Destroy; override;
-    function  GetParamCount: Integer; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
+  { Substring built-in function }
+
+  TkvScriptSubstringBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvStringValue;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
+  { IndexOf built-in function }
+
+  TkvScriptIndexOfBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvIntegerValue;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
+  { Left built-in function }
+
+  TkvScriptLeftBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvStringValue;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
+  { Right built-in function }
+
+  TkvScriptRightBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvStringValue;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
+  { SetOf built-in function }
+
+  TkvScriptSetOfBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvSetValue;
+  public
+    destructor Destroy; override;
     function  Call(const Context: TkvScriptContext;
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
@@ -231,11 +267,6 @@ destructor TkvScriptLengthBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptLengthBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
 end;
 
 function TkvScriptLengthBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -273,11 +304,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptIntegerCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptIntegerCastBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -302,11 +328,6 @@ destructor TkvScriptFloatCastBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptFloatCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
 end;
 
 function TkvScriptFloatCastBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -335,11 +356,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptStringCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptStringCastBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -366,11 +382,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptDateTimeCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptDateTimeCastBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -395,11 +406,6 @@ destructor TkvScriptByteCastBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptByteCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
 end;
 
 function TkvScriptByteCastBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -433,11 +439,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptBinaryCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptBinaryCastBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -462,11 +463,6 @@ destructor TkvScriptCharCastBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptCharCastBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
 end;
 
 function TkvScriptCharCastBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -495,11 +491,6 @@ destructor TkvScriptReplaceBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptReplaceBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 3;
 end;
 
 function TkvScriptReplaceBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -534,11 +525,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptGetDateBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 0;
-end;
-
 function TkvScriptGetDateBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 begin
@@ -558,11 +544,6 @@ destructor TkvScriptIsNullBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptIsNullBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 2;
 end;
 
 function TkvScriptIsNullBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -593,11 +574,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptLowerBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptLowerBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -621,11 +597,6 @@ destructor TkvScriptUpperBuiltInFunction.Destroy;
 begin
   FreeAndNil(FResult);
   inherited Destroy;
-end;
-
-function TkvScriptUpperBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
 end;
 
 function TkvScriptUpperBuiltInFunction.Call(const Context: TkvScriptContext;
@@ -653,11 +624,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptTrimBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptTrimBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -683,11 +649,6 @@ begin
   inherited Destroy;
 end;
 
-function TkvScriptRoundBuiltInFunction.GetParamCount: Integer;
-begin
-  Result := 1;
-end;
-
 function TkvScriptRoundBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
 var
@@ -699,6 +660,152 @@ begin
   if not Assigned(FResult) then
     FResult := TkvIntegerValue.Create;
   FResult.AsInteger := Round(F);
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptSubstringBuiltInFunction }
+
+destructor TkvScriptSubstringBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptSubstringBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  S : String;
+  I, L : Integer;
+begin
+  if Length(ParamValues) <> 3 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  S := ParamValues[0].AsString;
+  I := ParamValues[1].AsInteger;
+  L := ParamValues[2].AsInteger;
+  if not Assigned(FResult) then
+    FResult := TkvStringValue.Create;
+  FResult.AsString := Copy(S, I + 1, L);
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptIndexOfBuiltInFunction }
+
+destructor TkvScriptIndexOfBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptIndexOfBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  S, T : String;
+begin
+  if Length(ParamValues) <> 2 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  S := ParamValues[0].AsString;
+  T := ParamValues[1].AsString;
+  if not Assigned(FResult) then
+    FResult := TkvIntegerValue.Create;
+  FResult.AsInteger := T.IndexOf(S);
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptLeftBuiltInFunction }
+
+destructor TkvScriptLeftBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptLeftBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  S : String;
+  N : Integer;
+begin
+  if Length(ParamValues) <> 2 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  S := ParamValues[0].AsString;
+  N := ParamValues[1].AsInteger;
+  if not Assigned(FResult) then
+    FResult := TkvStringValue.Create;
+  FResult.AsString := Copy(S, 1, N);
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptRightBuiltInFunction }
+
+destructor TkvScriptRightBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptRightBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  S : String;
+  N, L : Integer;
+begin
+  if Length(ParamValues) <> 2 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  S := ParamValues[0].AsString;
+  N := ParamValues[1].AsInteger;
+  if not Assigned(FResult) then
+    FResult := TkvStringValue.Create;
+  L := Length(S);
+  FResult.AsString := Copy(S, L - N + 1, N);
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptSetOfBuiltInFunction }
+
+destructor TkvScriptSetOfBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptSetOfBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  L : Integer;
+  V : AkvValue;
+  Li : TkvListValue;
+  I, PaI : Integer;
+begin
+  L := Length(ParamValues);
+  if not Assigned(FResult) then
+    FResult := TkvSetValue.Create
+  else
+    FResult.Clear;
+  for PaI := 0 to L - 1 do
+    begin
+      V := ParamValues[PaI];
+      if V is TkvListValue then
+        begin
+          Li := TkvListValue(V);
+          for I := 0 to Li.GetCount - 1 do
+            FResult.Add(Li.GetValue(I).AsString);
+        end
+      else
+      if V is TkvStringValue then
+        FResult.Add(V.AsString)
+      else
+        raise EkvScriptFunction.Create('Invalid parameter type: List or string expected');
+    end;
   Result := FResult;
 end;
 
