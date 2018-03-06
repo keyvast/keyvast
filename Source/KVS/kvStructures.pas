@@ -45,15 +45,15 @@ const
 
 type
   TkvSystemFileHeader = packed record
-    Magic             : Word32;
-    Version           : Word32;
-    HeaderSize        : Word32;
+    Magic             : Word32;        // KV_SystemFileHeader_Magic
+    Version           : Word32;        // KV_SystemFileHeader_Version
+    HeaderSize        : Word32;        // KV_SystemFile_HeaderSize
     NameLength        : Word32;
     Name              : array[0..KV_SystemName_MaxLength - 1] of WideChar;
     CreationTime      : TDateTime;
     LastOpenTime      : TDateTime;
     UniqueIdCounter   : UInt64;
-    UserDataStrLength : Word32;
+    UserDataStrLength : Word32;        // User defined data
     UserDataStr       : array[0..KV_SystemFile_MaxUserDataLength - 1] of WideChar;
     Reserved          : array[0..595] of Byte;
   end;
@@ -269,13 +269,13 @@ const
 
 type
   TkvHashFileHeader = packed record
-    Magic           : Word32;
-    Version         : Word32;
-    HeaderSize      : Word32;
-    LevelSlotCount  : Word32;
+    Magic           : Word32;        // KV_HashFileHeader_Magic
+    Version         : Word32;        // KV_HashFileHeader_Version
+    HeaderSize      : Word32;        // KV_HashFile_HeaderSize
+    LevelSlotCount  : Word32;        // Slots count per level (fixed)
     UniqueIdCounter : UInt64;
     RecordCount     : Word32;
-    FirstDeletedIdx : Word32;
+    FirstDeletedIdx : Word32;        // Linked list of deleted records
     Reserved        : array[0..991] of Byte;
   end;
   PkvHashFileHeader = ^TkvHashFileHeader;
@@ -312,10 +312,10 @@ type
       hfrvtFolder
     );
   TkvHashFileRecord = packed record
-    Magic                 : Word16;
-    Version               : Byte;
+    Magic                 : Word16;                 // KV_HashFileRecord_Magic
+    Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
-    ChildSlotRecordIndex  : Word32;
+    ChildSlotRecordIndex  : Word32;                 // Used by ParentSlot and HashCollision
     KeyHash               : UInt64;
     KeyLength             : Word16;
     KeyShort              : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
@@ -367,12 +367,12 @@ const
 
 type
   TkvBlobFileHeader = packed record
-    Magic           : Word32;
-    Version         : Word32;
-    HeaderSize      : Word32;
+    Magic           : Word32;        // KV_BlobFileHeader_Magic
+    Version         : Word32;        // KV_BlobFileHeader_Version
+    HeaderSize      : Word32;        // KV_BlobFile_HeaderSize
     RecordSize      : Word32;
     RecordCount     : Word32;
-    FreeRecordIndex : Word32;
+    FreeRecordIndex : Word32;        // Linked list to free records
     FreeRecordCount : Word32;
     Reserved        : array[0..995] of Byte;
   end;
@@ -393,13 +393,16 @@ const
   KV_BlobFileRecordHeader_Magic   = $A509;
   KV_BlobFileRecordHeader_Version = 1;
 
+  KV_BlobFile_MaxChainSize = $7FFFFFFF;
+
 type
   TkvBlobFileRecordHeader = packed record
-    Magic           : Word;
-    Version         : Word;
-    NextRecordIndex : Word32;
+    Magic           : Word;        // KV_BlobFileRecordHeader_Magic
+    Version         : Word;        // KV_BlobFileRecordHeader_Version
+    NextRecordIndex : Word32;      // Next record in chain
     case Integer of
       0 : (Reserved        : array[0..7] of Byte);
+      // Only used by first record header in a chain
       1 : (LastRecordIndex : Word32;
            ChainSize       : Word32);
   end;

@@ -204,8 +204,10 @@ var
   Ds : TkvDataset;
   VI : TkvIntegerValue;
   VS : TkvStringValue;
+  VL : TkvListValue;
+  VD : TkvDictionaryValue;
   Va : AkvValue;
-  I : Integer;
+  I, J : Integer;
   S, T : String;
   It : TkvDatasetIterator;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
@@ -486,6 +488,41 @@ begin
       Va := Ds.GetRecord('append');
       Assert(Va.AsString = S + T);
       Va.Free;
+      Ds.DeleteRecord('append');
+      // append list
+      VL := TkvListValue.Create;
+      Ds.AddRecord('append', VL);
+      VL.Add(TkvIntegerValue.Create(1));
+      S := '';
+      for I := 1 to 500 do
+        begin
+          Ds.AppendRecord('append', VL);
+          if I > 1 then
+            S := S + ',';
+          S := S + '1';
+          Va := Ds.GetRecord('append');
+          Assert(Va.AsString = '[' + S + ']');
+          Va.Free;
+        end;
+      Ds.DeleteRecord('append');
+      VL.Free;
+      // append dictionary
+      VD := TkvDictionaryValue.Create;
+      Ds.AddRecord('append', VD);
+      for I := 1 to 500 do
+        begin
+          VD.Clear;
+          VD.Add(IntToStr(I), TkvIntegerValue.Create(I));
+          Ds.AppendRecord('append', VD);
+          Va := Ds.GetRecord('append');
+          for J := 1 to I do
+            begin
+              Assert(TkvDictionaryValue(Va).Exists(IntToStr(J)));
+              Assert(TkvDictionaryValue(Va).GetValueAsInteger(IntToStr(J)) = J);
+            end;
+          Va.Free;
+        end;
+      VD.Free;
       // close database
       Sys.Close;
     finally
@@ -1178,6 +1215,22 @@ begin
     Exec('SELECT 1.a', 'aabb');
     Exec('APPEND 1.a 3');
     Exec('SELECT 1.a', 'aabb3');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 []');
+    Exec('APPEND 1 [1]');
+    Exec('SELECT 1', '[1]');
+    Exec('APPEND 1 [2,3]');
+    Exec('SELECT 1', '[1,2,3]');
+    Exec('APPEND 1 [[1]]');
+    Exec('SELECT 1', '[1,2,3,[1]]');
+    Exec('DELETE 1');
+
+    Exec('INSERT 1 {}');
+    Exec('APPEND 1 {name:"john"}');
+    Exec('SELECT 1', '{name:"john"}');
+    Exec('APPEND 1 {name2:"john2"}');
+    Exec('SELECT 1', '{name:"john",name2:"john2"}');
     Exec('DELETE 1');
 
     Exec('CREATE PROCEDURE proc1(@par1, @par2) BEGIN RETURN @par1 + @par2 END');

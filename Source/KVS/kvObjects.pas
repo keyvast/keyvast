@@ -11,11 +11,10 @@
 { 2018/02/18  0.06  Handle hash collisions }
 { 2018/02/28  0.07  SysInfoDataset }
 { 2018/03/03  0.08  Folders support in Dataset }
-{ 2018/03/05  0.09  AppendRecord }
+{ 2018/03/05  0.09  AppendRecord for string and binary}
+{ 2018/03/06  0.10  AppendRecord for list and dictionary }
 
 {$INCLUDE kvInclude.inc}
-
-// Todo: AppendRecord for lists and dictionaries, INSERT[-1] and DICT.@ replace with APPEND
 
 unit kvObjects;
 
@@ -82,8 +81,6 @@ type
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
               const IsFolder: Boolean; var FolderBaseIdx: Word32);
-    procedure HashRecAppendValue(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
     procedure RecursiveHashRecSlotCollisionResolve(
               const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
@@ -108,6 +105,16 @@ type
               const D: TkvDictionaryValue);
     function  RecursiveGetFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
     function  RecursiveGetAllRecords: AkvValue;
+    procedure HashRecAppendValue_Rewrite(var HashRec: TkvHashFileRecord;
+              const Value: AkvValue);
+    procedure HashRecAppendValue_StrOrBin(var HashRec: TkvHashFileRecord;
+              const Value: AkvValue);
+    procedure HashRecAppendValue_List(var HashRec: TkvHashFileRecord;
+              const Value: AkvValue);
+    procedure HashRecAppendValue_Dictionary(var HashRec: TkvHashFileRecord;
+              const Value: AkvValue);
+    procedure HashRecAppendValue(var HashRec: TkvHashFileRecord;
+              const Value: AkvValue);
     procedure InternalDeleteRecord(const HashRecIdx: Word32; var HashRec: TkvHashFileRecord);
     function  SetNextIteratorRecord(var Iterator: TkvDatasetIterator): Boolean;
 
@@ -381,7 +388,7 @@ uses
 
 { Helper functions }
 
-procedure StringFromBuf(var S: String; const Buf; const Len: Integer);
+procedure kvNameFromBuf(var S: String; const Buf; const Len: Integer);
 begin
   SetLength(S, Len);
   if Len > 0 then
@@ -408,7 +415,7 @@ begin
   FDatasetListIdx := DatasetListIdx;
   FDatasetListRec := DatasetListRec;
 
-  StringFromBuf(FName, FDatasetListRec.Name[0], FDatasetListRec.NameLength);
+  kvNameFromBuf(FName, FDatasetListRec.Name[0], FDatasetListRec.NameLength);
 
   FHashFile := TkvHashFile.Create(FPath, FSystemName, FDatabaseName, FName);
   FKeyFile := TkvBlobFile.Create(FPath, FSystemName, FDatabaseName, FName, 'k');
@@ -587,6 +594,7 @@ begin
   HashRec.ValueTypeId := Value.TypeId;
 end;
 
+// Initialises Key and Value in HashRec, allocating folder slots if Folder
 procedure TkvDataset.HashRecInitKeyValue(out HashRec: TkvHashFileRecord;
           const Key: String; const KeyHash: UInt64;
           const Value: AkvValue;
@@ -603,69 +611,6 @@ begin
   else
     HashRecSetValue(HashRec, Value);
   HashRecSetKey(HashRec, Key, KeyHash);
-end;
-
-procedure TkvDataSet.HashRecAppendValue(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
-var
-  DataBuf : Pointer;
-  DataSize : Integer;
-  OldSize : Integer;
-  NewSize : Integer;
-  NewValDataSize : Word32;
-  NewValLength : Word32;
-  NewValLenEnc : Word32;
-  OldVal : AkvValue;
-  NewVal : AkvValue;
-begin
-  // Only types with a length prefix followed by raw data (string and binary)
-  if not (HashRec.ValueTypeId in [KV_Value_TypeId_String, KV_Value_TypeId_Binary]) then
-    raise EkvObject.Create('Record value type is not appendable');
-  if Value.TypeId <> HashRec.ValueTypeId then
-    raise EkvObject.Create('Append value type mismatch record value type');
-
-  Value.GetDataBuf(DataBuf, DataSize);
-  OldSize := HashRec.ValueSize;
-  NewSize := OldSize + DataSize;
-
-  if NewSize <= KV_HashFileRecord_SlotShortValueSize then
-    begin
-      HashRec.ValueType := hfrvtShort;
-      Move(DataBuf^, HashRec.ValueShort[OldSize], DataSize);
-      NewValDataSize := NewSize - 1;
-      if HashRec.ValueTypeId = KV_Value_TypeId_String then
-        NewValLength := NewValDataSize div 2
-      else
-        NewValLength := NewValDataSize;
-      HashRec.ValueShort[0] := Byte(NewValLength);
-      HashRec.ValueSize := NewSize;
-    end
-  else
-  // NewSize needs to be big enough that value's internal VarWord32 length
-  // encoding use the 32 bit encoding before AppendChain can be used;
-  // and ValueType needs to be hfrvtLong.
-  if (NewSize <= 512) or
-     (HashRec.ValueType = hfrvtShort) then
-    begin
-      OldVal := HashRecToValue(HashRec);
-      NewVal := ValueOpPlus(OldVal, Value);
-      OldVal.Free;
-      HashRecSetValue(HashRec, NewVal);
-      NewVal.Free;
-    end
-  else
-    begin
-      Assert(HashRec.ValueType = hfrvtLong);
-      FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
-      NewValDataSize := NewSize - SizeOf(Word32);
-      if HashRec.ValueTypeId = KV_Value_TypeId_String then
-        NewValLength := NewValDataSize div 2
-      else
-        NewValLength := NewValDataSize;
-      kvVarWord32EncodeBuf(NewValLength, NewValLenEnc, SizeOf(Word32));
-      FValueFile.WriteChainStart(HashRec.ValueLongChainIndex, NewValLenEnc, SizeOf(Word32));
-      HashRec.ValueSize := NewSize;
-    end;
 end;
 
 const
@@ -1137,6 +1082,7 @@ begin
   Result := S;
 end;
 
+// Constructs a value from a HashRec
 function TkvDataset.HashRecToValue(const HashRec: TkvHashFileRecord): AkvValue;
 var
   V : AkvValue;
@@ -1425,6 +1371,280 @@ begin
   end;
 end;
 
+procedure TkvDataSet.HashRecAppendValue_Rewrite(var HashRec: TkvHashFileRecord;
+          const Value: AkvValue);
+var
+  OldVal : AkvValue;
+  NewVal : AkvValue;
+begin
+  OldVal := HashRecToValue(HashRec);
+  try
+    NewVal := ValueOpAppend(OldVal, Value);
+  finally
+    OldVal.Free;
+  end;
+  try
+    HashRecSetValue(HashRec, NewVal);
+  finally
+    NewVal.Free;
+  end;
+end;
+
+// Appends value to HashRec value for String or Binary values
+procedure TkvDataSet.HashRecAppendValue_StrOrBin(var HashRec: TkvHashFileRecord;
+          const Value: AkvValue);
+var
+  DataBuf : Pointer;
+  DataSize : Integer;
+  OldSize : Integer;
+  NewSize : Integer;
+  NewValDataSize : Word32;
+  NewValLength : Word32;
+  NewValLenEnc : Word32;
+begin
+  if Value.TypeId <> HashRec.ValueTypeId then
+    raise EkvObject.Create('Append value type mismatch');
+
+  Value.GetDataBuf(DataBuf, DataSize);
+  OldSize := HashRec.ValueSize;
+  NewSize := OldSize + DataSize;
+
+  if NewSize <= KV_HashFileRecord_SlotShortValueSize then
+    begin
+      HashRec.ValueType := hfrvtShort;
+      Move(DataBuf^, HashRec.ValueShort[OldSize], DataSize);
+      NewValDataSize := NewSize - 1;
+      if HashRec.ValueTypeId = KV_Value_TypeId_String then
+        NewValLength := NewValDataSize div 2
+      else
+        NewValLength := NewValDataSize;
+      HashRec.ValueShort[0] := Byte(NewValLength);
+      HashRec.ValueSize := NewSize;
+    end
+  else
+  if (NewSize <= 512) or
+     (HashRec.ValueType = hfrvtShort) then
+    HashRecAppendValue_Rewrite(HashRec, Value)
+  else
+    // NewSize needs to be big enough that value's internal VarWord32 length
+    // encoding use the 32 bit encoding before AppendChain can be used;
+    // and ValueType needs to be hfrvtLong.
+    begin
+      Assert(HashRec.ValueType = hfrvtLong);
+      FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
+      NewValDataSize := NewSize - SizeOf(Word32);
+      if HashRec.ValueTypeId = KV_Value_TypeId_String then
+        NewValLength := NewValDataSize div 2
+      else
+        NewValLength := NewValDataSize;
+      kvVarWord32EncodeBuf(NewValLength, NewValLenEnc, SizeOf(Word32));
+      FValueFile.WriteChainStart(HashRec.ValueLongChainIndex, NewValLenEnc, SizeOf(Word32));
+      HashRec.ValueSize := NewSize;
+    end;
+end;
+
+procedure TkvDataSet.HashRecAppendValue_List(var HashRec: TkvHashFileRecord;
+          const Value: AkvValue);
+var
+  List : TkvListValue;
+  OldSize : Integer;
+  DataSize : Integer;
+  DataCount : Integer;
+  DataBuf : Pointer;
+  I : Integer;
+  NewSize : Integer;
+  NewCount : Integer;
+  NewCountEncSize : Integer;
+  NewCountEnc : Word32;
+  OldCountEnc : Word32;
+  OldCount : Word32;
+  OldCountEncSize : Integer;
+  CVal : AkvValue;
+  P : PByte;
+  N, F : Integer;
+begin
+  if not (Value is TkvListValue) then
+    raise EkvObject.Create('Append value type mismatch');
+  List := TkvListValue(Value);
+  DataCount := List.GetCount;
+  if DataCount = 0 then
+    exit;
+
+  DataSize := 0;
+  for I := 0 to DataCount - 1 do
+    Inc(DataSize, List.GetValue(I).SerialSize + 1);
+
+  OldSize := HashRec.ValueSize;
+  NewSize := OldSize + DataSize;
+
+  if (NewSize <= 512) or
+     (HashRec.ValueType = hfrvtShort) then
+    HashRecAppendValue_Rewrite(HashRec, Value)
+  else
+    begin
+      Assert(HashRec.ValueType = hfrvtLong);
+      FValueFile.ReadChain(HashRec.ValueLongChainIndex, OldCountEnc, SizeOf(Word32));
+      OldCountEncSize := kvVarWord32DecodeBuf(OldCountEnc, SizeOf(Word32), OldCount);
+      NewCount := Integer(OldCount) + DataCount;
+      NewCountEncSize := kvVarWord32EncodedSize(NewCount);
+      if NewCountEncSize <> OldCountEncSize then
+        HashRecAppendValue_Rewrite(HashRec, Value)
+      else
+        begin
+          GetMem(DataBuf, DataSize);
+          P := DataBuf;
+          N := DataSize;
+          for I := 0 to DataCount - 1 do
+            begin
+              CVal := List.GetValue(I);
+              P^ := CVal.TypeId;
+              Inc(P);
+              Dec(N);
+              F := CVal.GetSerialBuf(P^, N);
+              Inc(P, F);
+              Dec(N, F);
+            end;
+          Assert(N = 0);
+          FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
+          FreeMem(DataBuf);
+          kvVarWord32EncodeBuf(NewCount, NewCountEnc, SizeOf(Word32));
+          FValueFile.WriteChainStart(HashRec.ValueLongChainIndex, NewCountEnc, NewCountEncSize);
+          HashRec.ValueSize := NewSize;
+        end;
+    end;
+end;
+
+procedure TkvDataSet.HashRecAppendValue_Dictionary(var HashRec: TkvHashFileRecord;
+          const Value: AkvValue);
+var
+  Dict : TkvDictionaryValue;
+  DictIt : TkvDictionaryValueIterator;
+  DictKey : String;
+  DictKeyLen : Integer;
+  DictValue : AkvValue;
+  OldSize : Integer;
+  DataSize : Integer;
+  DataCount : Integer;
+  DataBuf : Pointer;
+  I : Integer;
+  NewSize : Integer;
+  NewCount : Integer;
+  NewCountEncSize : Integer;
+  NewCountEnc : Word32;
+  OldCountEnc : Word32;
+  OldCount : Word32;
+  OldCountEncSize : Integer;
+  P : PByte;
+  N, F : Integer;
+begin
+  if not (Value is TkvDictionaryValue) then
+    raise EkvObject.Create('Append value type mismatch');
+  Dict := TkvDictionaryValue(Value);
+  DataCount := Dict.GetCount;
+  if DataCount = 0 then
+    exit;
+
+  DataSize := 0;
+  Dict.IterateFirst(DictIt);
+  for I := 0 to DataCount - 1 do
+    begin
+      Dict.IteratorGetKeyValue(DictIt, DictKey, DictValue);
+      DictKeyLen := Length(DictKey);
+      Inc(DataSize, DictKeyLen * SizeOf(Char) + kvVarWord32EncodedSize(DictKeyLen));
+      Inc(DataSize, DictValue.SerialSize + 1);
+    end;
+
+  OldSize := HashRec.ValueSize;
+  NewSize := OldSize + DataSize;
+
+  if (NewSize <= 512) or
+     (HashRec.ValueType = hfrvtShort) then
+    HashRecAppendValue_Rewrite(HashRec, Value)
+  else
+    begin
+      Assert(HashRec.ValueType = hfrvtLong);
+      FValueFile.ReadChain(HashRec.ValueLongChainIndex, OldCountEnc, SizeOf(Word32));
+      OldCountEncSize := kvVarWord32DecodeBuf(OldCountEnc, SizeOf(Word32), OldCount);
+      NewCount := Integer(OldCount) + DataCount;
+      NewCountEncSize := kvVarWord32EncodedSize(NewCount);
+      if NewCountEncSize <> OldCountEncSize then
+        HashRecAppendValue_Rewrite(HashRec, Value)
+      else
+        begin
+          GetMem(DataBuf, DataSize);
+          P := DataBuf;
+          N := DataSize;
+          Dict.IterateFirst(DictIt);
+          for I := 0 to DataCount - 1 do
+            begin
+              Dict.IteratorGetKeyValue(DictIt, DictKey, DictValue);
+              DictKeyLen := Length(DictKey);
+              F := kvVarWord32EncodeBuf(DictKeyLen, P^, N);
+              Inc(P, F);
+              Dec(N, F);
+              F := DictKeyLen * SizeOf(Char);
+              Move(Pointer(DictKey)^, P^, F);
+              Inc(P, F);
+              Dec(N, F);
+              P^ := DictValue.TypeId;
+              Inc(P);
+              Dec(N);
+              F := DictValue.GetSerialBuf(P^, N);
+              Inc(P, F);
+              Dec(N, F);
+            end;
+          Assert(N = 0);
+          FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
+          FreeMem(DataBuf);
+          kvVarWord32EncodeBuf(NewCount, NewCountEnc, SizeOf(Word32));
+          FValueFile.WriteChainStart(HashRec.ValueLongChainIndex, NewCountEnc, NewCountEncSize);
+          HashRec.ValueSize := NewSize;
+        end;
+    end;
+end;
+
+// Appends value to HashRec value
+procedure TkvDataSet.HashRecAppendValue(var HashRec: TkvHashFileRecord;
+          const Value: AkvValue);
+begin
+  case HashRec.ValueTypeId of
+    KV_Value_TypeId_String,
+    KV_Value_TypeId_Binary     : HashRecAppendValue_StrOrBin(HashRec, Value);
+    KV_Value_TypeId_List       : HashRecAppendValue_List(HashRec, Value);
+    KV_Value_TypeId_Dictionary : HashRecAppendValue_Dictionary(HashRec, Value);
+  else
+    raise EkvObject.Create('Record value type is not appendable');
+  end;
+end;
+
+procedure TkvDataset.AppendRecord(const Key: String; const Value: AkvValue);
+var
+  HashRecIdx : Word32;
+  HashRec : TkvHashFileRecord;
+begin
+  if Key = '' then
+    raise EkvObject.Create('Invalid key');
+  if not LocateRecord(Key, HashRecIdx, HashRec) then
+    raise EkvObject.CreateFmt('Key not found: %s', [Key]);
+  Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
+  if HashRec.ValueType = hfrvtFolder then
+    raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
+  HashRecAppendValue(HashRec, Value);
+  FHashFile.SaveRecord(HashRecIdx, HashRec);
+end;
+
+procedure TkvDataset.AppendRecordString(const Key: String; const Value: String);
+var
+  V : TkvStringValue;
+begin
+  V := TkvStringValue.Create;
+  try
+    AppendRecord(Key, V);
+  finally
+    V.Free;
+  end;
+end;
+
 procedure TkvDataset.InternalDeleteRecord(const HashRecIdx: Word32; var HashRec: TkvHashFileRecord);
 var
   SltI, RecI : Word32;
@@ -1484,34 +1704,6 @@ begin
       end;
   end;
   FHashFile.SaveRecord(HashRecIdx, HashRec);
-end;
-
-procedure TkvDataset.AppendRecord(const Key: String; const Value: AkvValue);
-var
-  HashRecIdx : Word32;
-  HashRec : TkvHashFileRecord;
-begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if not LocateRecord(Key, HashRecIdx, HashRec) then
-    raise EkvObject.CreateFmt('Key not found: %s', [Key]);
-  Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
-  if HashRec.ValueType = hfrvtFolder then
-    raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
-  HashRecAppendValue(HashRec, Value);
-  FHashFile.SaveRecord(HashRecIdx, HashRec);
-end;
-
-procedure TkvDataset.AppendRecordString(const Key: String; const Value: String);
-var
-  V : TkvStringValue;
-begin
-  V := TkvStringValue.Create;
-  try
-    AppendRecord(Key, V);
-  finally
-    V.Free;
-  end;
 end;
 
 procedure TkvDataset.DeleteRecord(const Key: String);
@@ -1886,7 +2078,7 @@ begin
   FDatabaseListIdx := DatabaseListIdx;
   FDatabaseListRec := DatabaseListRec;
 
-  StringFromBuf(FName, FDatabaseListRec.Name[0], FDatabaseListRec.NameLength);
+  kvNameFromBuf(FName, FDatabaseListRec.Name[0], FDatabaseListRec.NameLength);
 
   FDatasetList := TkvDatasetList.Create(Path, SystemName, FName);
 end;

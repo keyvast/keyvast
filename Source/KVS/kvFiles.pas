@@ -1457,6 +1457,8 @@ begin
 
   FirstRecIdx := RecordIndex;
   LoadRecordHeader(FirstRecIdx, FirstRecHdr);
+  if Int64(FirstRecHdr.ChainSize) + BufSize > KV_BlobFile_MaxChainSize then
+    raise EkvFile.Create('Blob file error: Chain size too large');
 
   RecIdx := FirstRecHdr.LastRecordIndex;
   if RecIdx = KV_BlobFile_InvalidIndex then

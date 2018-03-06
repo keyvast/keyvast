@@ -263,10 +263,12 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    procedure Clear;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
     procedure Add(const Key: String; const Value: AkvValue);
+    procedure AddItems(const Items: TkvDictionaryValue);
     procedure AddString(const Key: String; const Value: String);
     procedure AddBoolean(const Key: String; const Value: Boolean);
     procedure AddFloat(const Key: String; const Value: Double);
@@ -1465,6 +1467,11 @@ begin
   inherited Destroy;
 end;
 
+procedure TkvDictionaryValue.Clear;
+begin
+  FValue.Clear;
+end;
+
 function TkvDictionaryValue.Duplicate: AkvValue;
 var
   R : TkvDictionaryValue;
@@ -1641,6 +1648,19 @@ procedure TkvDictionaryValue.Add(const Key: String; const Value: AkvValue);
 begin
   Assert(Assigned(Value));
   FValue.Add(Key, Value);
+end;
+
+procedure TkvDictionaryValue.AddItems(const Items: TkvDictionaryValue);
+var
+  It : TkvDictionaryValueIterator;
+  Key : String;
+  Value : AkvValue;
+begin
+  if Items.IterateFirst(It) then
+    repeat
+      Items.IteratorGetKeyValue(It, Key, Value);
+      Add(Key, Value.Duplicate);
+    until not Items.IterateNext(It);
 end;
 
 procedure TkvDictionaryValue.AddString(const Key: String; const Value: String);
@@ -2316,6 +2336,7 @@ end;
 function ValueOpAppend(const A, B: AkvValue): AkvValue;
 var
   L : TkvListValue;
+  D : TkvDictionaryValue;
 begin
   if A is TkvStringValue then
     Result := TkvStringValue.Create(A.AsString + B.AsString)
@@ -2326,8 +2347,21 @@ begin
   if A is TkvListValue then
     begin
       L := TkvListValue(A.Duplicate);
-      L.Add(B.Duplicate);
+      if B is TkvListValue then
+        L.AddList(TkvListValue(B))
+      else
+        L.Add(B.Duplicate);
       Result := L;
+    end
+  else
+  if B is TkvDictionaryValue then
+    begin
+      if not (B is TkvDictionaryValue) then
+        raise EkvValue.CreateFmt('Type error: Cannot append types: %s and %s',
+           [A.ClassName, B.ClassName]);
+      D := TkvDictionaryValue(A.Duplicate);
+      D.AddItems(TkvDictionaryValue(B));
+      Result := D;
     end
   else
     raise EkvValue.CreateFmt('Type error: Cannot append types: %s and %s',
