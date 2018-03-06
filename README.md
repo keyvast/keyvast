@@ -14,6 +14,10 @@ See the Wiki or documentation for more information:
 
 [Documentation](https://github.com/keyvast/keyvast/blob/master/Documentation/kv.txt)
 
+For the latest binary releases:
+
+[Releases](https://github.com/keyvast/keyvast/releases)
+
 
 License
 -------
