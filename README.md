@@ -8,6 +8,13 @@ hash trees for quick access to keys. It also features
 a scripting language which exposes the features of the
 store.
 
+See the Wiki or documentation for more information:
+
+[Wiki](https://github.com/keyvast/keyvast/wiki)
+
+[Documentation](https://github.com/keyvast/keyvast/blob/master/Documentation/kv.txt)
+
+
 License
 -------
 
