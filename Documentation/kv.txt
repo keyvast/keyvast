@@ -232,6 +232,7 @@
 
             INSERT <value ref> <value>
             UPDATE <value ref> <value>
+            APPEND <value ref> <value>
             SELECT <value ref>
             DELETE <value ref>
             EXISTS <value ref>
@@ -592,6 +593,7 @@
             <insert statement> |
             <delete statement> |
             <update statement> |
+            <append statement> |
             <mkpath statement> |
             <if statement> |
             <block statement> |
@@ -622,6 +624,8 @@
         <delete statement> ::= 'DELETE' <value ref>
 
         <update statement> ::= 'UPDATE' <value ref> <value>
+
+        <append statement> ::= 'APPEND' <value ref> <value>
 
         <mkpath statement> ::= 'MKPATH' <record ref>
 
