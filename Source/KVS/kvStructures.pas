@@ -8,6 +8,8 @@
 { 2018/02/09  0.03  Hash file }
 { 2018/02/10  0.04  Blob file }
 { 2018/03/03  0.05  Folders support in hash file }
+{ 2018/03/08  0.06  Decrease level slot count from 64 to 32 }
+{                   Change hash file record structure for longer keys }
 
 {$INCLUDE kvInclude.inc}
 
@@ -255,7 +257,7 @@ procedure kvInitDatasetListFileRecord(
 {                                                                              }
 
 const
-  KV_HashFile_LevelSlotCount = 64;
+  KV_HashFile_LevelSlotCount = 32;
   KV_HashFile_InvalidIndex   = $FFFFFFFF;
   KV_HashFile_MaxKeyLength   = $FFFF;
 
@@ -294,8 +296,8 @@ const
   KV_HashFileRecord_Magic   = $A507;
   KV_HashFileRecord_Version = 1;
 
-  KV_HashFileRecord_SlotShortKeyLength = 9;
-  KV_HashFileRecord_SlotShortValueSize = 18;
+  KV_HashFileRecord_SlotShortKeyLength = 26;
+  KV_HashFileRecord_SlotShortValueSize = 34;
 
 type
   TkvHashFileRecordType = (
@@ -316,13 +318,17 @@ type
     Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
     ChildSlotRecordIndex  : Word32;                 // Used by ParentSlot and HashCollision
+    Reserved_1            : Word32;
     KeyHash               : UInt64;
     KeyLength             : Word16;
+    Reserved_2            : Word16;
     KeyShort              : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
     KeyLongChainIndex     : Word32;
+    Reserved_3            : Word32;
     ValueType             : TkvHashFileRecordValueType;
     ValueTypeId           : Byte;
     ValueSize             : Word32;
+    Reserved_4            : Word32;
     case Integer of
       0 : (ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte);
       1 : (ValueLongChainIndex  : Word32);

@@ -53,7 +53,7 @@ begin
   Assert(KV_DatasetListFile_HeaderSize = 1024);
   Assert(KV_DatasetListFile_RecordSize = 1024);
   Assert(KV_HashFile_HeaderSize = 1024);
-  Assert(KV_HashFile_RecordSize = 64);
+  Assert(KV_HashFile_RecordSize = 128);
   Assert(KV_BlobFile_HeaderSize = 1024);
   Assert(KV_BlobFile_RecordHeaderSize = 16);
 end;
@@ -214,7 +214,7 @@ var
   T1 : LongWord;
   {$ENDIF}{$ENDIF}
 const
-  TestN1 = 10000;
+  TestN1 = 100000;
 begin
   DeleteFile(BasePath + 'testsys.kvsys');
   DeleteFile(BasePath + 'testsys.kvdbl');
@@ -300,7 +300,6 @@ begin
           Assert(not Ds.RecordExists(IntToStr(I)));
           Ds.AddRecord(IntToStr(I), VI);
           Assert(Ds.RecordExists(IntToStr(I)));
-          Assert(Ds.RecordExists('testkey'));
         end;
       {$IFDEF Profile}{$IFDEF MSWINDOWS}
       T1 := LongWord(GetTickCount - T1);
