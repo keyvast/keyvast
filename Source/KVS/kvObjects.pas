@@ -13,6 +13,7 @@
 { 2018/03/03  0.08  Folders support in Dataset }
 { 2018/03/05  0.09  AppendRecord for string and binary}
 { 2018/03/06  0.10  AppendRecord for list and dictionary }
+{ 2018/03/07  0.11  Dictionary append improvement }
 
 {$INCLUDE kvInclude.inc}
 
@@ -1459,9 +1460,7 @@ var
   OldCountEnc : Word32;
   OldCount : Word32;
   OldCountEncSize : Integer;
-  CVal : AkvValue;
-  P : PByte;
-  N, F : Integer;
+  F : Integer;
 begin
   if not (Value is TkvListValue) then
     raise EkvObject.Create('Append value type mismatch');
@@ -1492,19 +1491,8 @@ begin
       else
         begin
           GetMem(DataBuf, DataSize);
-          P := DataBuf;
-          N := DataSize;
-          for I := 0 to DataCount - 1 do
-            begin
-              CVal := List.GetValue(I);
-              P^ := CVal.TypeId;
-              Inc(P);
-              Dec(N);
-              F := CVal.GetSerialBuf(P^, N);
-              Inc(P, F);
-              Dec(N, F);
-            end;
-          Assert(N = 0);
+          F := List.EncodeEntries(DataBuf^, DataSize);
+          Assert(F = DataSize);
           FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
           FreeMem(DataBuf);
           kvVarWord32EncodeBuf(NewCount, NewCountEnc, SizeOf(Word32));
@@ -1534,8 +1522,7 @@ var
   OldCountEnc : Word32;
   OldCount : Word32;
   OldCountEncSize : Integer;
-  P : PByte;
-  N, F : Integer;
+  F : Integer;
 begin
   if not (Value is TkvDictionaryValue) then
     raise EkvObject.Create('Append value type mismatch');
@@ -1572,28 +1559,8 @@ begin
       else
         begin
           GetMem(DataBuf, DataSize);
-          P := DataBuf;
-          N := DataSize;
-          Dict.IterateFirst(DictIt);
-          for I := 0 to DataCount - 1 do
-            begin
-              Dict.IteratorGetKeyValue(DictIt, DictKey, DictValue);
-              DictKeyLen := Length(DictKey);
-              F := kvVarWord32EncodeBuf(DictKeyLen, P^, N);
-              Inc(P, F);
-              Dec(N, F);
-              F := DictKeyLen * SizeOf(Char);
-              Move(Pointer(DictKey)^, P^, F);
-              Inc(P, F);
-              Dec(N, F);
-              P^ := DictValue.TypeId;
-              Inc(P);
-              Dec(N);
-              F := DictValue.GetSerialBuf(P^, N);
-              Inc(P, F);
-              Dec(N, F);
-            end;
-          Assert(N = 0);
+          F := Dict.EncodeEntries(DataBuf^, DataSize);
+          Assert(F = DataSize);
           FValueFile.AppendChain(HashRec.ValueLongChainIndex, DataBuf^, DataSize);
           FreeMem(DataBuf);
           kvVarWord32EncodeBuf(NewCount, NewCountEnc, SizeOf(Word32));

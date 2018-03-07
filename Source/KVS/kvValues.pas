@@ -236,6 +236,8 @@ type
     destructor Destroy; override;
     function  GetCount: Integer;
     function  Duplicate: AkvValue; override;
+    class function EncodeEntry(var Buf; const BufSize: Integer; const Value: AkvValue): Integer;
+    function  EncodeEntries(var Buf; const BufSize: Integer): Integer;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
     procedure Add(const Value: AkvValue);
@@ -265,6 +267,9 @@ type
     destructor Destroy; override;
     procedure Clear;
     function  Duplicate: AkvValue; override;
+    class function EncodeEntry(var Buf; const BufSize: Integer;
+                   const Key: String; const Value: AkvValue): Integer;
+    function  EncodeEntries(var Buf; const BufSize: Integer): Integer;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
     procedure Add(const Key: String; const Value: AkvValue);
@@ -1295,12 +1300,29 @@ begin
   Result := R;
 end;
 
-function TkvListValue.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
+class function TkvListValue.EncodeEntry(var Buf; const BufSize: Integer; const Value: AkvValue): Integer;
+var
+  P : PByte;
+  L : Integer;
+  N : Integer;
+begin
+  P := @Buf;
+  L := BufSize;
+  if L < 1 then
+    raise EkvValue.Create(SInvalidBufferSize);
+  P^ := Value.GetTypeId;
+  Inc(P);
+  Dec(L);
+  N := Value.GetSerialBuf(P^, L);
+  Dec(L, N);
+  Result := BufSize - L;
+end;
+
+function TkvListValue.EncodeEntries(var Buf; const BufSize: Integer): Integer;
 var
   P : PByte;
   L : Integer;
   M : Int32;
-  F : Integer;
   I : Integer;
   V : AkvValue;
   N : Integer;
@@ -1308,21 +1330,31 @@ begin
   P := @Buf;
   L := BufSize;
   M := Length(FValue);
-  F := kvVarWord32EncodeBuf(M, P^, L);
-  Inc(P, F);
-  Dec(L, F);
   for I := 0 to M - 1 do
     begin
       V := FValue[I];
-      if L < 1 then
-        raise EkvValue.Create(SInvalidBufferSize);
-      P^ := V.GetTypeId;
-      Inc(P);
-      Dec(L);
-      N := V.GetSerialBuf(P^, L);
+      N := EncodeEntry(P^, L, V);
       Inc(P, N);
       Dec(L, N);
     end;
+  Result := BufSize - L;
+end;
+
+function TkvListValue.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
+var
+  P : PByte;
+  L : Integer;
+  M : Int32;
+  F : Integer;
+begin
+  P := @Buf;
+  L := BufSize;
+  M := Length(FValue);
+  F := kvVarWord32EncodeBuf(M, P^, L);
+  Inc(P, F);
+  Dec(L, F);
+  F := EncodeEntries(P^, L);
+  Dec(L, F);
   Result := BufSize - L;
 end;
 
@@ -1541,17 +1573,65 @@ begin
   Result := R;
 end;
 
+class function TkvDictionaryValue.EncodeEntry(var Buf; const BufSize: Integer;
+               const Key: String; const Value: AkvValue): Integer;
+var
+  P : PByte;
+  L : Integer;
+  T : Integer;
+  F : Integer;
+  N : Integer;
+begin
+  P := @Buf;
+  L := BufSize;
+  T := Length(Key);
+  F := kvVarWord32EncodeBuf(T, P^, L);
+  Inc(P, F);
+  Dec(L, F);
+  N := T * SizeOf(Char);
+  if L < N then
+    raise EkvValue.Create(SInvalidBufferSize);
+  if T > 0 then
+    Move(PChar(Key)^, P^, N);
+  Inc(P, N);
+  Dec(L, N);
+  if L < 1 then
+    raise EkvValue.Create(SInvalidBufferSize);
+  P^ := Value.GetTypeId;
+  Inc(P);
+  Dec(L);
+  N := Value.GetSerialBuf(P^, L);
+  Dec(L, N);
+  Result := BufSize - L;
+end;
+
+function TkvDictionaryValue.EncodeEntries(var Buf; const BufSize: Integer): Integer;
+var
+  P : PByte;
+  L : Integer;
+  F : Integer;
+  Itr : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
+begin
+  P := @Buf;
+  L := BufSize;
+  Itm := FValue.IterateFirst(Itr);
+  while Assigned(Itm) do
+    begin
+      F := EncodeEntry(P^, L, Itm^.Key, AkvValue(Itm^.Value));
+      Inc(P, F);
+      Dec(L, F);
+      Itm := FValue.IterateNext(Itr);
+    end;
+  Result := BufSize - L;
+end;
+
 function TkvDictionaryValue.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
 var
   P : PByte;
   L : Integer;
   M : Int32;
   F : Integer;
-  I : Integer;
-  N : Integer;
-  T : Int32;
-  Itr : TkvStringHashListIterator;
-  Itm : PkvStringHashListItem;
 begin
   P := @Buf;
   L := BufSize;
@@ -1559,31 +1639,8 @@ begin
   F := kvVarWord32EncodeBuf(M, P^, L);
   Inc(P, F);
   Dec(L, F);
-  Itm := FValue.IterateFirst(Itr);
-  for I := 0 to M - 1 do
-    begin
-      Assert(Assigned(Itm));
-      T := Length(Itm^.Key);
-      F := kvVarWord32EncodeBuf(T, P^, L);
-      Inc(P, F);
-      Dec(L, F);
-      N := T * SizeOf(Char);
-      if L < N then
-        raise EkvValue.Create(SInvalidBufferSize);
-      if T > 0 then
-        Move(PChar(Itm^.Key)^, P^, N);
-      Inc(P, N);
-      Dec(L, N);
-      if L < 1 then
-        raise EkvValue.Create(SInvalidBufferSize);
-      P^ := AkvValue(Itm^.Value).GetTypeId;
-      Inc(P);
-      Dec(L);
-      N := AkvValue(Itm^.Value).GetSerialBuf(P^, L);
-      Inc(P, N);
-      Dec(L, N);
-      Itm := FValue.IterateNext(Itr);
-    end;
+  F := EncodeEntries(P^, L);
+  Dec(L, F);
   Result := BufSize - L;
 end;
 
