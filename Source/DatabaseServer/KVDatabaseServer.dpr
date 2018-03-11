@@ -41,7 +41,9 @@ uses
   kvScriptSystem in '..\KVS\kvScriptSystem.pas',
   kvTest in '..\KVS\kvTest.pas',
   kvdsApplication in 'kvdsApplication.pas',
-  kvScriptFunctions in '..\KVS\kvScriptFunctions.pas';
+  kvScriptFunctions in '..\KVS\kvScriptFunctions.pas',
+  flcDecimal in '..\Fundamentals\flcDecimal.pas',
+  flcInteger in '..\Fundamentals\flcInteger.pas';
 
 type
   EAppError = class(Exception);
@@ -166,7 +168,7 @@ end;
 
 procedure PrintTitle;
 begin
-  Writeln('KeyVast Database Server 1.20');
+  Writeln('KeyVast Database Server 1.30');
 end;
 
 procedure PrintHelp;
@@ -320,8 +322,12 @@ end;
 {$ENDIF}
 
 begin
+  {$IFDEF DEBUG}
   {$IFDEF TEST}
+  flcInteger.Test;
+  flcDecimal.Test;
   kvTest.Test;
+  {$ENDIF}
   {$ENDIF}
   try
     ReadIniFile;

@@ -18,7 +18,7 @@ uses
   {$ENDIF }
   {$IFDEF MACOS}
   Macapi.CoreFoundation,
-  {$ENDIF}
+  {$ENDIF }
   System.SysUtils,
   SyncObjs,
   kvlaApplication in 'kvlaApplication.pas',
@@ -33,7 +33,9 @@ uses
   kvScriptParser in '..\KVS\kvScriptParser.pas',
   kvScriptSystem in '..\KVS\kvScriptSystem.pas',
   kvTest in '..\KVS\kvTest.pas',
-  kvScriptFunctions in '..\KVS\kvScriptFunctions.pas';
+  kvScriptFunctions in '..\KVS\kvScriptFunctions.pas',
+  flcDecimal in '..\Fundamentals\flcDecimal.pas',
+  flcInteger in '..\Fundamentals\flcInteger.pas';
 
 type
   EAppError = class(Exception);
@@ -103,7 +105,7 @@ end;
 
 procedure PrintTitle;
 begin
-  Writeln('KeyVast Local Admin 1.20');
+  Writeln('KeyVast Local Admin 1.30');
 end;
 
 procedure PrintHelp;
@@ -194,8 +196,12 @@ var
   CmdS, CmdP : String;
 
 begin
+  {$IFDEF DEBUG}
   {$IFDEF TEST}
+  flcInteger.Test;
+  flcDecimal.Test;
   kvTest.Test;
+  {$ENDIF}
   {$ENDIF}
   try
     ParseParameters;
