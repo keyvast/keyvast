@@ -609,6 +609,7 @@ begin
   FIdentifiers.Add('SETOF', TkvScriptSetOfBuiltInFunction.Create);
   FIdentifiers.Add('DATE', TkvScriptDateBuiltInFunction.Create);
   FIdentifiers.Add('TIME', TkvScriptTimeBuiltInFunction.Create);
+  FIdentifiers.Add('DECIMAL', TkvScriptDecimalCastBuiltInFunction.Create);
 end;
 
 destructor TkvScriptSystemScope.Destroy;

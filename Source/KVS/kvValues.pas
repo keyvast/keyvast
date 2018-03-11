@@ -12,9 +12,9 @@
 { 2018/03/03  0.08  Unordered set value }
 { 2018/03/04  0.09  Optimised dictionary implementation }
 { 2018/03/05  0.10  Value GetDataBuf function }
+{ 2018/03/11  0.11  Decimal128 value }
 
 // todo: hugeint
-// todo: decimals
 
 {$INCLUDE kvInclude.inc}
 
@@ -24,6 +24,7 @@ interface
 
 uses
   SysUtils,
+  flcDecimal,
   kvHashList;
 
 
@@ -35,6 +36,7 @@ const
   KV_Value_TypeId_Boolean    = $04;
   KV_Value_TypeId_DateTime   = $05;
   KV_Value_TypeId_Binary     = $06;
+  KV_Value_TypeId_Decimal128 = $07;
   KV_Value_TypeId_Null       = $10;
   KV_Value_TypeId_List       = $20;
   KV_Value_TypeId_Dictionary = $21;
@@ -57,12 +59,14 @@ type
     function  GetAsInteger: Int64; virtual;
     function  GetAsDateTime: TDateTime; virtual;
     function  GetAsBinary: kvByteArray; virtual;
+    function  GetAsDecimal128: SDecimal128; virtual;
     procedure SetAsString(const A: String); virtual;
     procedure SetAsBoolean(const A: Boolean); virtual;
     procedure SetAsFloat(const A: Double); virtual;
     procedure SetAsInteger(const A: Int64); virtual;
     procedure SetAsDateTime(const A: TDateTime); virtual;
     procedure SetAsBinary(const A: kvByteArray); virtual;
+    procedure SetAsDecimal128(const A: SDecimal128); virtual;
     function  GetTypeId: Byte; virtual;
     function  GetSerialSize: Integer; virtual;
   public
@@ -74,6 +78,7 @@ type
     property  AsInteger: Int64 read GetAsInteger write SetAsInteger;
     property  AsDateTime: TDateTime read GetAsDateTime write SetAsDateTime;
     property  AsBinary: kvByteArray read GetAsBinary write SetAsBinary;
+    property  AsDecimal128: SDecimal128 read GetAsDecimal128 write SetAsDecimal128;
     procedure Negate; virtual;
     property  TypeId: Byte read GetTypeId;
     property  SerialSize: Integer read GetSerialSize;
@@ -91,9 +96,11 @@ type
     function  GetAsBoolean: Boolean; override;
     function  GetAsFloat: Double; override;
     function  GetAsInteger: Int64; override;
+    function  GetAsDecimal128: SDecimal128; override;
     procedure SetAsString(const A: String); override;
     procedure SetAsBoolean(const A: Boolean); override;
     procedure SetAsInteger(const A: Int64); override;
+    procedure SetAsDecimal128(const A: SDecimal128); override;
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
@@ -118,6 +125,7 @@ type
     function  GetAsInteger: Int64; override;
     function  GetAsDateTime: TDateTime; override;
     function  GetAsBinary: kvByteArray; override;
+    function  GetAsDecimal128: SDecimal128; override;
     procedure SetAsString(const A: String); override;
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
@@ -137,8 +145,10 @@ type
   protected
     function  GetAsString: String; override;
     function  GetAsFloat: Double; override;
+    function  GetAsDecimal128: SDecimal128; override;
     procedure SetAsFloat(const A: Double); override;
     procedure SetAsInteger(const A: Int64); override;
+    procedure SetAsDecimal128(const A: SDecimal128); override;
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
@@ -321,6 +331,28 @@ type
     procedure DeleteSet(const Value: TkvSetValue);
   end;
 
+  TkvDecimal128Value = class(AkvValue)
+  private
+    FValue : SDecimal128;
+  protected
+    function  GetAsString: String; override;
+    function  GetAsFloat: Double; override;
+    function  GetAsInteger: Int64; override;
+    function  GetAsDecimal128: SDecimal128; override;
+    procedure SetAsString(const A: String); override;
+    procedure SetAsInteger(const A: Int64); override;
+    procedure SetAsFloat(const A: Double); override;
+    procedure SetAsDecimal128(const A: SDecimal128); override;
+    function  GetTypeId: Byte; override;
+    function  GetSerialSize: Integer; override;
+  public
+    constructor Create; overload;
+    constructor Create(const Value: SDecimal128); overload;
+    function  Duplicate: AkvValue; override;
+    function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
+    function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+  end;
+
 
 
 { Factory function }
@@ -446,6 +478,7 @@ begin
     KV_Value_TypeId_DateTime   : Result := TkvDateTimeValue.Create;
     KV_Value_TypeId_Binary     : Result := TkvBinaryValue.Create;
     KV_Value_TypeId_Null       : Result := TkvNullValue.Create;
+    KV_Value_TypeId_Decimal128 : Result := TkvDecimal128Value.Create;
     KV_Value_TypeId_List       : Result := TkvListValue.Create;
     KV_Value_TypeId_Dictionary : Result := TkvDictionaryValue.Create;
     KV_Value_TypeId_Set        : Result := TkvSetValue.Create;
@@ -488,6 +521,11 @@ begin
   raise EkvValue.CreateFmt('Type conversion error: %s cannot convert to a binary value', [ClassName]);
 end;
 
+function AkvValue.GetAsDecimal128: SDecimal128;
+begin
+  raise EkvValue.CreateFmt('Type conversion error: %s cannot convert to a decimal value', [ClassName]);
+end;
+
 procedure AkvValue.SetAsString(const A: String);
 begin
   raise EkvValue.CreateFmt('Type conversion error: %s cannot set from a string value', [ClassName]);
@@ -516,6 +554,11 @@ end;
 procedure AkvValue.SetAsBinary(const A: kvByteArray);
 begin
   raise EkvValue.CreateFmt('Type conversion error: %s cannot set from a binary value', [ClassName]);
+end;
+
+procedure AkvValue.SetAsDecimal128(const A: SDecimal128);
+begin
+  raise EkvValue.CreateFmt('Type conversion error: %s cannot set from a decimal value', [ClassName]);
 end;
 
 procedure AkvValue.Negate;
@@ -583,6 +626,11 @@ begin
   Result := FValue;
 end;
 
+function TkvIntegerValue.GetAsDecimal128: SDecimal128;
+begin
+  SDecimal128InitInt64(Result, FValue);
+end;
+
 procedure TkvIntegerValue.SetAsString(const A: String);
 begin
   if not TryStrToInt64(A, FValue) then
@@ -597,6 +645,11 @@ end;
 procedure TkvIntegerValue.SetAsInteger(const A: Int64);
 begin
   FValue := A;
+end;
+
+procedure TkvIntegerValue.SetAsDecimal128(const A: SDecimal128);
+begin
+  FValue := SDecimal128ToInt64(A);
 end;
 
 function TkvIntegerValue.GetTypeId: Byte;
@@ -703,6 +756,12 @@ function TkvStringValue.GetAsDateTime: TDateTime;
 begin
   if not TryStrToDateTime(FValue, Result) then
     raise EkvValue.Create('Type conversion error: Not a date/time value');
+end;
+
+function TkvStringValue.GetAsDecimal128: SDecimal128;
+begin
+  if TryStrToSDecimal128(FValue, Result) <> dceNoError then
+    raise EkvValue.Create('Type conversion error: Not a decimal value');
 end;
 
 function TkvStringValue.GetAsBinary: kvByteArray;
@@ -823,6 +882,11 @@ begin
   Result := TkvFloatValue.Create(FValue);
 end;
 
+function TkvFloatValue.GetAsDecimal128: SDecimal128;
+begin
+  SDecimal128InitFloat(Result, FValue);
+end;
+
 function TkvFloatValue.GetAsFloat: Double;
 begin
   Result := FValue;
@@ -831,6 +895,11 @@ end;
 function TkvFloatValue.GetAsString: String;
 begin
   Result := FloatToStr(FValue);
+end;
+
+procedure TkvFloatValue.SetAsDecimal128(const A: SDecimal128);
+begin
+  FValue := SDecimal128ToFloat(A);
 end;
 
 procedure TkvFloatValue.SetAsFloat(const A: Double);
@@ -2063,6 +2132,93 @@ end;
 
 
 
+{ TkvDecimal128Value }
+
+constructor TkvDecimal128Value.Create;
+begin
+  SDecimal128InitZero(FValue);
+end;
+
+constructor TkvDecimal128Value.Create(const Value: SDecimal128);
+begin
+  inherited Create;
+  SDecimal128InitSDecimal128(FValue, Value);
+end;
+
+function TkvDecimal128Value.Duplicate: AkvValue;
+begin
+  Result := TkvDecimal128Value.Create(FValue);
+end;
+
+function TkvDecimal128Value.GetAsString: String;
+begin
+  Result := SDecimal128ToStr(FValue);
+end;
+
+function TkvDecimal128Value.GetAsInteger: Int64;
+begin
+  Result := SDecimal128ToInt64(FValue);
+end;
+
+function TkvDecimal128Value.GetAsDecimal128: SDecimal128;
+begin
+  SDecimal128InitSDecimal128(Result, FValue);
+end;
+
+function TkvDecimal128Value.GetAsFloat: Double;
+begin
+  Result := SDecimal128ToFloat(FValue);
+end;
+
+procedure TkvDecimal128Value.SetAsString(const A: String);
+begin
+  if TryStrToSDecimal128(A, FValue) <> dceNoError then
+    raise EkvValue.Create('Type conversion error: Not a valid decimal string');
+end;
+
+procedure TkvDecimal128Value.SetAsInteger(const A: Int64);
+begin
+  SDecimal128InitInt64(FValue, A);
+end;
+
+procedure TkvDecimal128Value.SetAsFloat(const A: Double);
+begin
+  SDecimal128InitFloat(FValue, A);
+end;
+
+procedure TkvDecimal128Value.SetAsDecimal128(const A: SDecimal128);
+begin
+  SDecimal128InitSDecimal128(FValue, A);
+end;
+
+function TkvDecimal128Value.GetTypeId: Byte;
+begin
+  Result := KV_Value_TypeId_Decimal128;
+end;
+
+function TkvDecimal128Value.GetSerialSize: Integer;
+begin
+  Result := SizeOf(SDecimal128);
+end;
+
+function TkvDecimal128Value.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
+begin
+  if BufSize < SizeOf(SDecimal128) then
+    raise EkvValue.Create(SInvalidBufferSize);
+  SDecimal128InitSDecimal128(PSDecimal128(@Buf)^, FValue);
+  Result := SizeOf(SDecimal128);
+end;
+
+function TkvDecimal128Value.PutSerialBuf(const Buf; const BufSize: Integer): Integer;
+begin
+  if BufSize < SizeOf(SDecimal128) then
+    raise EkvValue.Create(SInvalidBufferSize);
+  SDecimal128InitSDecimal128(FValue, PSDecimal128(@Buf)^);
+  Result := SizeOf(SDecimal128);
+end;
+
+
+
 { kvByteArray helpers }
 
 function kvByteArrayAppend(const A, B: kvByteArray): kvByteArray;
@@ -2127,6 +2283,7 @@ function ValueOpPlus(const A, B: AkvValue): AkvValue;
 var
   S : TkvSetValue;
   L : TkvListValue;
+  D : SDecimal128;
 begin
   if (A is TkvNullValue) or (B is TkvNullValue) then
     Result := TkvNullValue.Create
@@ -2183,6 +2340,12 @@ begin
   if (A is TkvStringValue) or (B is TkvStringValue) then
     Result := TkvStringValue.Create(A.GetAsString + B.GetAsString)
   else
+  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+    begin
+      SDecimal128InitSDecimal128(D, A.AsDecimal128);
+      SDecimal128AddSDecimal128(D, B.AsDecimal128);
+      Result := TkvDecimal128Value.Create(D);
+    end else
   if (A is TkvFloatValue) or (B is TkvFloatValue) then
     Result := TkvFloatValue.Create(A.GetAsFloat + B.GetAsFloat)
   else
@@ -2196,6 +2359,7 @@ end;
 function ValueOpMinus(const A, B: AkvValue): AkvValue;
 var
   S : TkvSetValue;
+  D : SDecimal128;
 begin
   if A is TkvSetValue then
     if B is TkvSetValue then
@@ -2214,6 +2378,12 @@ begin
   if (A is TkvNullValue) or (B is TkvNullValue) then
     Result := TkvNullValue.Create
   else
+  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+    begin
+      SDecimal128InitSDecimal128(D, A.AsDecimal128);
+      SDecimal128SubtractSDecimal128(D, B.AsDecimal128);
+      Result := TkvDecimal128Value.Create(D);
+    end else
   if (A is TkvFloatValue) or (B is TkvFloatValue) then
     Result := TkvFloatValue.Create(A.GetAsFloat - B.GetAsFloat)
   else
@@ -2225,10 +2395,18 @@ begin
 end;
 
 function ValueOpMultiply(const A, B: AkvValue): AkvValue;
+var
+  D : SDecimal128;
 begin
   if (A is TkvNullValue) or (B is TkvNullValue) then
     Result := TkvNullValue.Create
   else
+  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+    begin
+      SDecimal128InitSDecimal128(D, A.AsDecimal128);
+      SDecimal128MultiplySDecimal128(D, B.AsDecimal128);
+      Result := TkvDecimal128Value.Create(D);
+    end else
   if (A is TkvFloatValue) or (B is TkvFloatValue) then
     Result := TkvFloatValue.Create(A.GetAsFloat * B.GetAsFloat)
   else
@@ -2240,10 +2418,18 @@ begin
 end;
 
 function ValueOpDivide(const A, B: AkvValue): AkvValue;
+var
+  D : SDecimal128;
 begin
   if (A is TkvNullValue) or (B is TkvNullValue) then
     Result := TkvNullValue.Create
   else
+  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+    begin
+      SDecimal128InitSDecimal128(D, A.AsDecimal128);
+      SDecimal128DivideSDecimal128(D, B.AsDecimal128);
+      Result := TkvDecimal128Value.Create(D);
+    end else
   if (A is TkvFloatValue) or (B is TkvFloatValue) then
     Result := TkvFloatValue.Create(A.GetAsFloat / B.GetAsFloat)
   else
@@ -2359,6 +2545,9 @@ begin
   else
   if B is TkvNullValue then
     Result := 1
+  else
+  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+    Result := SDecimal128CompareSDecimal128(A.GetAsDecimal128, B.GetAsDecimal128)
   else
   if (A is TkvBinaryValue) or (B is TkvBinaryValue) then
     Result := kvByteArrayCompare(A.GetAsBinary, B.GetAsBinary)

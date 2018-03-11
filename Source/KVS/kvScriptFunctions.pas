@@ -139,6 +139,17 @@ type
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
 
+  { Decimal cast built-in function }
+
+  TkvScriptDecimalCastBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvDecimal128Value;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
   { Replace built-in function }
 
   TkvScriptReplaceBuiltInFunction = class(AkvScriptProcedureValue)
@@ -279,7 +290,8 @@ uses
   {$IFDEF MACOS}
   Macapi.CoreFoundation,
   {$ENDIF}
-  StrUtils;
+  StrUtils,
+  flcDecimal;
 
 
 
@@ -564,6 +576,32 @@ begin
   if B > $FFFF then
     raise EkvScriptFunction.Create('Invalid character value');
   FResult.AsString := WideChar(B);
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptDecimalCastBuiltInFunction }
+
+destructor TkvScriptDecimalCastBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptDecimalCastBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  V : AkvValue;
+  B : SDecimal128;
+begin
+  if Length(ParamValues) <> 1 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  V := ParamValues[0];
+  B := V.AsDecimal128;
+  if not Assigned(FResult) then
+    FResult := TkvDecimal128Value.Create;
+  FResult.AsDecimal128 := B;
   Result := FResult;
 end;
 

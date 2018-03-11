@@ -97,6 +97,9 @@ procedure Test_Hash2;
 var
   I : Integer;
   H1, H2 : UInt64;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 : LongWord;
+  {$ENDIF}{$ENDIF}
 begin
   // kvLevel1HashString
   Assert(kvLevel1HashString('', True) = kvLevel1HashString('', False));
@@ -116,6 +119,16 @@ begin
 
   Assert(kvLevel1HashString('Hello world', True) = $EE34E4B5EF1D9331);
   Assert(kvLevel1HashString('Hello world', False) = $7EDF79A0B38B1ACA);
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to 100000 do
+     kvLevel1HashString('Hello world', True);
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Hash:', T1 / 1000:0:2, 's');
+  {$ENDIF}{$ENDIF}
 
   // kvLevelNHash
   H1 := $100;
@@ -295,15 +308,15 @@ begin
       Ds.AddRecord('testkey', VI);
       Assert(Ds.RecordExists('testkey'));
       // add records
+      for I := 1 to TestN1 do
+        Assert(not Ds.RecordExists(IntToStr(I)));
       {$IFDEF Profile}{$IFDEF MSWINDOWS}
       T1 := GetTickCount;
       {$ENDIF}{$ENDIF}
       for I := 1 to TestN1 do
         begin
           VI.Value := I;
-          Assert(not Ds.RecordExists(IntToStr(I)));
           Ds.AddRecord(IntToStr(I), VI);
-          Assert(Ds.RecordExists(IntToStr(I)));
         end;
       {$IFDEF Profile}{$IFDEF MSWINDOWS}
       T1 := LongWord(GetTickCount - T1);
@@ -324,6 +337,9 @@ begin
       Assert(Va.TypeId = KV_Value_TypeId_Integer);
       Assert(Va.AsString = '0');
       Va.Free;
+      {$IFDEF Profile}{$IFDEF MSWINDOWS}
+      T1 := GetTickCount;
+      {$ENDIF}{$ENDIF}
       for I := 1 to TestN1 do
         begin
           S := IntToStr(I);
@@ -332,6 +348,10 @@ begin
           Assert(Va.AsString = S);
           Va.Free;
         end;
+      {$IFDEF Profile}{$IFDEF MSWINDOWS}
+      T1 := LongWord(GetTickCount - T1);
+      Writeln('Get:', T1 / 1000:0:2, 's');
+      {$ENDIF}{$ENDIF}
       // set record
       Va := Ds.GetRecord('102');
       Assert(Assigned(Va));
@@ -870,6 +890,13 @@ begin
     Exec('SET @a = SETOF()');
     Exec('EVAL @a', 'SETOF([])');
 
+    Exec('SET @a = DECIMAL(1)');
+    Exec('EVAL @a', '1.0000000000000000000');
+    Exec('SET @a = DECIMAL(1.2)');
+    Exec('EVAL @a', '1.2000000000000000000');
+    Exec('SET @a = DECIMAL("1.2")');
+    Exec('EVAL @a', '1.2000000000000000000');
+
     Ses.Close;
     MSys.Close;
 
@@ -1068,6 +1095,12 @@ begin
     Exec('DELETE 1');
     Exec('DELETE 2');
     Exec('DELETE 3');
+
+    Exec('INSERT 1 DECIMAL("1.7")');
+    Exec('SELECT 1', '1.7000000000000000000');
+    Exec('UPDATE 1 DECIMAL("1.1") + DECIMAL("1.2") + 1 + 1.1');
+    Exec('SELECT 1', '4.4000000000000000000');
+    Exec('DELETE 1');
 
     Exec('IF 1=2 THEN INSERT 1 "A" ELSE INSERT 1 "B"');
     Exec('SELECT 1', 'B');
