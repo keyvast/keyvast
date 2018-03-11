@@ -367,6 +367,8 @@
         Date
 
             DATETIME(x)  Constructs date/time from string parameter.
+            DATE(y,m,d)  Constructs date.
+            TIME(h,m,s)  Constructs time.
             GETDATE()    Current date and time.
 
         Binary

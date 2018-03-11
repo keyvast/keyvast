@@ -336,7 +336,7 @@ type
   end;
 
 const
-  KV_HashFile_RecordSize = SizeOf(TkvHashFileRecord); // 64 bytes
+  KV_HashFile_RecordSize = SizeOf(TkvHashFileRecord); // 128 bytes
 
 procedure kvInitHashFileRecord(
           out Rec: TkvHashFileRecord);
