@@ -84,6 +84,28 @@ type
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
 
+  { Date built-in function }
+
+  TkvScriptDateBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvDateTimeValue;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
+  { Time built-in function }
+
+  TkvScriptTimeBuiltInFunction = class(AkvScriptProcedureValue)
+  private
+    FResult : TkvDateTimeValue;
+  public
+    destructor Destroy; override;
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
   { Byte cast built-in function }
 
   TkvScriptByteCastBuiltInFunction = class(AkvScriptProcedureValue)
@@ -392,6 +414,68 @@ begin
     raise EkvScriptFunction.Create('Invalid parameter count');
   V := ParamValues[0];
   D := V.AsDateTime;
+  if not Assigned(FResult) then
+    FResult := TkvDateTimeValue.Create;
+  FResult.AsDateTime := D;
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptDateBuiltInFunction }
+
+destructor TkvScriptDateBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptDateBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  Ye, Mo, Da : Int64;
+  D : TDateTime;
+begin
+  if Length(ParamValues) <> 3 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  Ye := ParamValues[0].AsInteger;
+  Mo := ParamValues[1].AsInteger;
+  Da := ParamValues[2].AsInteger;
+  D := EncodeDate(Ye, Mo, Da);
+  if not Assigned(FResult) then
+    FResult := TkvDateTimeValue.Create;
+  FResult.AsDateTime := D;
+  Result := FResult;
+end;
+
+
+
+{ TkvScriptTimeBuiltInFunction }
+
+destructor TkvScriptTimeBuiltInFunction.Destroy;
+begin
+  FreeAndNil(FResult);
+  inherited Destroy;
+end;
+
+function TkvScriptTimeBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  L : Integer;
+  Ho, Mi, Se, ZZ : Int64;
+  D : TDateTime;
+begin
+  L := Length(ParamValues);
+  if (L < 3) or (L > 4) then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  Ho := ParamValues[0].AsInteger;
+  Mi := ParamValues[1].AsInteger;
+  Se := ParamValues[2].AsInteger;
+  if L > 3 then
+    ZZ := ParamValues[3].AsInteger
+  else
+    ZZ := 0;
+  D := EncodeTime(Ho, Mi, Se, ZZ);
   if not Assigned(FResult) then
     FResult := TkvDateTimeValue.Create;
   FResult.AsDateTime := D;

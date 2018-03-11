@@ -2174,6 +2174,9 @@ begin
       Result := L;
     end
   else
+  if (A is TkvDateTimeValue) or (B is TkvDateTimeValue) then
+    Result := TkvDateTimeValue.Create(A.GetAsDateTime + B.GetAsDateTime)
+  else
   if (A is TkvBinaryValue) or (B is TkvBinaryValue) then
     Result := TkvBinaryValue.Create(kvByteArrayAppend(A.GetAsBinary, B.GetAsBinary))
   else

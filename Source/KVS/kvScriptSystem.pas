@@ -607,6 +607,8 @@ begin
   FIdentifiers.Add('LEFT', TkvScriptLeftBuiltInFunction.Create);
   FIdentifiers.Add('RIGHT', TkvScriptRightBuiltInFunction.Create);
   FIdentifiers.Add('SETOF', TkvScriptSetOfBuiltInFunction.Create);
+  FIdentifiers.Add('DATE', TkvScriptDateBuiltInFunction.Create);
+  FIdentifiers.Add('TIME', TkvScriptTimeBuiltInFunction.Create);
 end;
 
 destructor TkvScriptSystemScope.Destroy;
