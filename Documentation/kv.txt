@@ -195,6 +195,12 @@
         result of the operation is null.
 
 
+        1.8 Decimal
+
+        The decimal value is stored internally as a 128-bit value
+        with 19 digits before and 19 digits after the decimal.
+
+
         2. COMPOSITE VALUES
 
         2.1 Dictionary
@@ -385,6 +391,7 @@
                          expression x is null.
             SETOF(x)     Constructs set value from list of
                          strings x.
+            DECIMAL(x)   Constructs decimal value form parameter.
 
 
 
