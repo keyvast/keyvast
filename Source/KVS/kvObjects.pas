@@ -1506,15 +1506,10 @@ procedure TkvDataSet.HashRecAppendValue_Dictionary(var HashRec: TkvHashFileRecor
           const Value: AkvValue);
 var
   Dict : TkvDictionaryValue;
-  DictIt : TkvDictionaryValueIterator;
-  DictKey : String;
-  DictKeyLen : Integer;
-  DictValue : AkvValue;
   OldSize : Integer;
   DataSize : Integer;
   DataCount : Integer;
   DataBuf : Pointer;
-  I : Integer;
   NewSize : Integer;
   NewCount : Integer;
   NewCountEncSize : Integer;
@@ -1531,16 +1526,7 @@ begin
   if DataCount = 0 then
     exit;
 
-  DataSize := 0;
-  Dict.IterateFirst(DictIt);
-  for I := 0 to DataCount - 1 do
-    begin
-      Dict.IteratorGetKeyValue(DictIt, DictKey, DictValue);
-      DictKeyLen := Length(DictKey);
-      Inc(DataSize, DictKeyLen * SizeOf(Char) + kvVarWord32EncodedSize(DictKeyLen));
-      Inc(DataSize, DictValue.SerialSize + 1);
-    end;
-
+  DataSize := Dict.EncodedEntriesSize;
   OldSize := HashRec.ValueSize;
   NewSize := OldSize + DataSize;
 

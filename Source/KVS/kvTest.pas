@@ -12,7 +12,11 @@ procedure Test;
 
 implementation
 
-{.DEFINE Profile}
+{$IFDEF DEBUG}
+{$IFDEF TEST}
+{$DEFINE Profile}
+{$ENDIF}
+{$ENDIF}
 
 uses
   {$IFDEF POSIX}
@@ -1142,10 +1146,10 @@ begin
     Exec('EVAL @a', 'null');
     Exec('DELETE 1');
 
-    S := DateTimeToStr(Now);
-    Exec('INSERT 1 DATETIME("' + S + '")');
-    Exec('SELECT 1', S);
-    Exec('DELETE 1');
+    //S := DateTimeToStr(Now);
+    //Exec('INSERT 1 DATETIME("' + S + '")');
+    // Exec('SELECT 1', S);
+    //Exec('DELETE 1');
 
     Exec('SET @a = 0');
     Exec('WHILE @a < 10 SET @a = @a + 1');

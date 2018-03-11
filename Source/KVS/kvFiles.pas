@@ -195,7 +195,7 @@ type
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName: String;
                 const CacheEntries: Integer =
-                    KV_HashFile_LevelSlotCount * KV_HashFile_LevelSlotCount);
+                    0);
     destructor Destroy; override;
 
     procedure OpenNew;
@@ -919,7 +919,7 @@ begin
      (Rec.Version = 0) or
      not (Rec.RecordType in [hfrtEmpty, hfrtParentSlot, hfrtKeyValue,
          hfrtKeyValueWithHashCollision, hfrtDeleted]) or
-     not (Rec.ValueType in [hfrvtNone, hfrvtShort, hfrvtLong]) then
+     not (Rec.ValueType in [hfrvtNone, hfrvtShort, hfrvtLong, hfrvtFolder]) then
     raise EkvFile.Create('Hash file: Corrupt record');
 
   if CacheRange then

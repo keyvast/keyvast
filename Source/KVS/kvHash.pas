@@ -93,13 +93,16 @@ begin
 
       H1 := Word32(H shr 32);
       H2 := Word32(H and $FFFFFFFF);
+
       H1 := Word32(H1 + Word32(I) + Word32(D));
       H2 := Word32(H2 + Word32(I) + Word32(L));
+
       H1 := Word32(UInt64(H1) * 73 + 1);
       H2 := Word32(UInt64(H2) * 5 + 79);
 
       T1 := Word32(UInt64(H1) shl 11) xor (H1 shr 5) xor Word32(UInt64(H2) shl 17) xor (H2 shr 19);
       T2 := Word32(UInt64(H2) shl 7)  xor (H2 shr 3) xor Word32(UInt64(H1) shl 15) xor (H1 shr 17);
+
       H := (UInt64(T1) shl 32) or T2;
     end;
 

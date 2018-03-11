@@ -270,6 +270,7 @@ type
     class function EncodeEntry(var Buf; const BufSize: Integer;
                    const Key: String; const Value: AkvValue): Integer;
     function  EncodeEntries(var Buf; const BufSize: Integer): Integer;
+    function  EncodedEntriesSize: Integer;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
     procedure Add(const Key: String; const Value: AkvValue);
@@ -1552,24 +1553,10 @@ function TkvDictionaryValue.GetSerialSize: Integer;
 var
   L : Integer;
   R : Integer;
-  I : Integer;
-  N : Integer;
-  F : Integer;
-  Itr : TkvStringHashListIterator;
-  Itm : PkvStringHashListItem;
 begin
   L := FValue.Count;
   R := kvVarWord32EncodedSize(L);
-  Itm := FValue.IterateFirst(Itr);
-  for I := 0 to L - 1 do
-    begin
-      Assert(Assigned(Itm));
-      N := Length(Itm^.Key);
-      F := kvVarWord32EncodedSize(N);
-      Inc(R, F + N * SizeOf(Char) +
-             1 + AkvValue(Itm^.Value).GetSerialSize);
-      Itm := FValue.IterateNext(Itr);
-    end;
+  Inc(R, EncodedEntriesSize);
   Result := R;
 end;
 
@@ -1624,6 +1611,27 @@ begin
       Itm := FValue.IterateNext(Itr);
     end;
   Result := BufSize - L;
+end;
+
+function TkvDictionaryValue.EncodedEntriesSize: Integer;
+var
+  R : Integer;
+  DictKey : String;
+  DictKeyLen : Integer;
+  Itr : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
+begin
+  R := 0;
+  Itm := FValue.IterateFirst(Itr);
+  while Assigned(Itm) do
+    begin
+      DictKey := Itm^.Key;
+      DictKeyLen := Length(DictKey);
+      Inc(R, DictKeyLen * SizeOf(Char) + kvVarWord32EncodedSize(DictKeyLen));
+      Inc(R, AkvValue(Itm^.Value).SerialSize + 1);
+      Itm := FValue.IterateNext(Itr);
+    end;
+  Result := R;
 end;
 
 function TkvDictionaryValue.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
