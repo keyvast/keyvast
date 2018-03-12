@@ -8,7 +8,7 @@
 { 2018/02/17  0.04  Binary operators, If statement, If expression }
 { 2018/02/23  0.05  Stored procedures }
 { 2018/03/01  0.06  Push/Pop used database and dataset on procedure call }
-{ 2018/03/12  0.07  Improved locking }
+{ 2018/03/12  0.07  Improved locking, reduced value duplication }
 
 {$INCLUDE kvInclude.inc}
 
@@ -125,7 +125,7 @@ type
     constructor Create(const IdentifierRef: AkvScriptIdentifierReference);
     destructor Destroy; override;
 
-    function  GetValue(const Context: TkvScriptContext; const V: TObject): TObject; virtual; abstract;
+    function  GetValue(const Context: TkvScriptContext; const V: TObject; out Owner: Boolean): TObject; virtual; abstract;
     procedure SetValue(const Context: TkvScriptContext; const V: AkvValue; const Val: AkvValue); virtual; abstract;
   end;
 
@@ -140,7 +140,7 @@ type
 
     function  Duplicate: AkvScriptNode; override;
     function  GetAsString: String; override;
-    function  GetValue(const Context: TkvScriptContext; const V: TObject): TObject; override;
+    function  GetValue(const Context: TkvScriptContext; const V: TObject; out Owner: Boolean): TObject; override;
     procedure SetValue(const Context: TkvScriptContext; const V: AkvValue; const Value: AkvValue); override;
   end;
 
@@ -156,7 +156,7 @@ type
 
     function  Duplicate: AkvScriptNode; override;
     function  GetAsString: String; override;
-    function  GetValue(const Context: TkvScriptContext; const V: TObject): TObject; override;
+    function  GetValue(const Context: TkvScriptContext; const V: TObject; out Owner: Boolean): TObject; override;
     procedure SetValue(const Context: TkvScriptContext; const V: AkvValue; const Value: AkvValue); override;
   end;
 
@@ -173,7 +173,7 @@ type
 
     function  Duplicate: AkvScriptNode; override;
     function  GetAsString: String; override;
-    function  GetValue(const Context: TkvScriptContext; const V: TObject): TObject; override;
+    function  GetValue(const Context: TkvScriptContext; const V: TObject; out Owner: Boolean): TObject; override;
     procedure SetValue(const Context: TkvScriptContext; const V: AkvValue; const Value: AkvValue); override;
   end;
 
@@ -877,7 +877,6 @@ type
   private
     FParamList  : TkvScriptCreateProcedureParamNameArray;
     FStatement  : AkvScriptStatement;
-    FLastResult : AkvValue;
 
   public
     constructor Create(
@@ -901,6 +900,7 @@ type
     function  GetIdentifier(const Identifier: String): TObject; override;
     procedure SetIdentifier(const Identifier: String; const Value: TObject); override;
     function  GetLocalIdentifier(const Identifier: String): TObject;
+    function  ReleaseLocalIdentifier(const Identifier: String): TObject;
     procedure ScopeLock; override;
     procedure ScopeUnlock; override;
   end;
@@ -1266,36 +1266,55 @@ begin
   Result := S;
 end;
 
-function TkvScriptFieldNameIdentifierReference.GetValue(const Context: TkvScriptContext; const V: TObject): TObject;
+function TkvScriptFieldNameIdentifierReference.GetValue(const Context: TkvScriptContext; const V: TObject; out Owner: Boolean): TObject;
 var
   A : TObject;
+  AOwn : Boolean;
 begin
   if Assigned(FIdentifierRef) then
-    A := FIdentifierRef.GetValue(Context, V)
+    A := FIdentifierRef.GetValue(Context, V, AOwn)
   else
-    A := V;
-  if not (A is TkvDictionaryValue) then
-    raise EkvScriptNode.CreateFmt('Field applied to a non-dictionary: %s', [FFieldName]);
-  Result := TkvDictionaryValue(A).GetValue(FFieldName);
+    begin
+      A := V;
+      AOwn := False;
+    end;
+  try
+    if not (A is TkvDictionaryValue) then
+      raise EkvScriptNode.CreateFmt('Field applied to a non-dictionary: %s', [FFieldName]);
+    Result := TkvDictionaryValue(A).GetValue(FFieldName);
+    Owner := False;
+  finally
+    if AOwn then
+      A.Free;
+  end;
 end;
 
 procedure TkvScriptFieldNameIdentifierReference.SetValue(const Context: TkvScriptContext;
           const V: AkvValue; const Value: AkvValue);
 var
   A : TObject;
+  AOwn : Boolean;
   D : TkvDictionaryValue;
 begin
   if Assigned(FIdentifierRef) then
-    A := FIdentifierRef.GetValue(Context, V)
+    A := FIdentifierRef.GetValue(Context, V, AOwn)
   else
-    A := V;
-  if not (A is TkvDictionaryValue) then
-    raise EkvScriptNode.CreateFmt('Field applied to a non-dictionary: %s', [FFieldName]);
-  D := TkvDictionaryValue(A);
-  if D.Exists(FFieldName) then
-    D.SetValue(FFieldName, Value.Duplicate)
-  else
-    D.Add(FFieldName, Value.Duplicate)
+    begin
+      A := V;
+      AOwn := False;
+    end;
+  try
+    if not (A is TkvDictionaryValue) then
+      raise EkvScriptNode.CreateFmt('Field applied to a non-dictionary: %s', [FFieldName]);
+    D := TkvDictionaryValue(A);
+    if D.Exists(FFieldName) then
+      D.SetValue(FFieldName, Value.Duplicate)
+    else
+      D.Add(FFieldName, Value.Duplicate)
+  finally
+    if AOwn then
+      A.Free;
+  end;
 end;
 
 
@@ -1337,22 +1356,32 @@ begin
   Result := S;
 end;
 
-function TkvScriptListIndexIdentifierReference.GetValue(const Context: TkvScriptContext; const V: TObject): TObject;
+function TkvScriptListIndexIdentifierReference.GetValue(const Context: TkvScriptContext; const V: TObject; out Owner: Boolean): TObject;
 var
   A : TObject;
+  AOwn : Boolean;
   LIV : AkvValue;
 begin
   if Assigned(FIdentifierRef) then
-    A := FIdentifierRef.GetValue(Context, V)
+    A := FIdentifierRef.GetValue(Context, V, AOwn)
   else
-    A := V;
-  if not (A is TkvListValue) then
-    raise EkvScriptNode.Create('Index applied to a non-list');
-  LIV := FListIndex.Evaluate(Context);
+    begin
+      A := V;
+      AOwn := False;
+    end;
   try
-    Result := TkvListValue(A).GetValue(LIV.AsInteger);
+    if not (A is TkvListValue) then
+      raise EkvScriptNode.Create('Index applied to a non-list');
+    LIV := FListIndex.Evaluate(Context);
+    try
+      Result := TkvListValue(A).GetValue(LIV.AsInteger);
+      Owner := False;
+    finally
+      LIV.Free;
+    end;
   finally
-    LIV.Free;
+    if AOwn then
+      A.Free;
   end;
 end;
 
@@ -1360,23 +1389,32 @@ procedure TkvScriptListIndexIdentifierReference.SetValue(const Context: TkvScrip
           const V: AkvValue; const Value: AkvValue);
 var
   A : TObject;
+  AOwn : Boolean;
   LIV : AkvValue;
   LiIdx : Integer;
   Li : TkvListValue;
 begin
   if Assigned(FIdentifierRef) then
-    A := FIdentifierRef.GetValue(Context, V)
+    A := FIdentifierRef.GetValue(Context, V, AOwn)
   else
-    A := V;
-  if not (A is TkvListValue) then
-    raise EkvScriptNode.Create('Index applied to a non-list');
-  Li := TkvListValue(A);
-  LIV := FListIndex.Evaluate(Context);
-  LiIdx := LIV.AsInteger;
-  if LiIdx = -1 then
-    Li.Add(Value.Duplicate)
-  else
-    Li.SetValue(LiIdx, Value.Duplicate);
+    begin
+      A := V;
+      AOwn := False;
+    end;
+  try
+    if not (A is TkvListValue) then
+      raise EkvScriptNode.Create('Index applied to a non-list');
+    Li := TkvListValue(A);
+    LIV := FListIndex.Evaluate(Context);
+    LiIdx := LIV.AsInteger;
+    if LiIdx = -1 then
+      Li.Add(Value.Duplicate)
+    else
+      Li.SetValue(LiIdx, Value.Duplicate);
+  finally
+    if AOwn then
+      A.Free;
+  end;
 end;
 
 
@@ -1434,34 +1472,44 @@ begin
 end;
 
 function TkvScriptFunctionCallIdentifierReference.GetValue(const Context: TkvScriptContext;
-         const V: TObject): TObject;
+         const V: TObject; out Owner: Boolean): TObject;
 var
   A : TObject;
+  AOwn : Boolean;
   L, I : Integer;
   PR : AkvScriptProcedureValue;
   PV : TkvValueArray;
   Res : AkvValue;
 begin
   if Assigned(FIdentifierRef) then
-    A := FIdentifierRef.GetValue(Context, V)
+    A := FIdentifierRef.GetValue(Context, V, AOwn)
   else
-    A := V;
-  if not (A is AkvScriptProcedureValue) then
-    raise EkvScriptNode.Create('Function call to a non-procedure');
-  PR := AkvScriptProcedureValue(A);
-  L := Length(FParamExpressions);
-  SetLength(PV, L);
-  for I := 0 to L - 1 do
-    PV[I] := nil;
+    begin
+      A := V;
+      AOwn := False;
+    end;
   try
+    if not (A is AkvScriptProcedureValue) then
+      raise EkvScriptNode.Create('Function call to a non-procedure');
+    PR := AkvScriptProcedureValue(A);
+    L := Length(FParamExpressions);
+    SetLength(PV, L);
     for I := 0 to L - 1 do
-      PV[I] := FParamExpressions[I].Evaluate(Context);
-    Res := PR.Call(Context, PV);
+      PV[I] := nil;
+    try
+      for I := 0 to L - 1 do
+        PV[I] := FParamExpressions[I].Evaluate(Context);
+      Res := PR.Call(Context, PV);
+    finally
+      for I := L - 1 downto 0 do
+        PV[I].Free;
+    end;
+    Result := Res;
+    Owner := True;
   finally
-    for I := L - 1 downto 0 do
-      PV[I].Free;
+    if AOwn then
+      A.Free;
   end;
-  Result := Res;
 end;
 
 procedure TkvScriptFunctionCallIdentifierReference.SetValue(const Context: TkvScriptContext;
@@ -1504,31 +1552,38 @@ function TkvScriptIdentifierExpression.Evaluate(const Context: TkvScriptContext)
 var
   V : TObject;
   R : TObject;
+  ROwn : Boolean;
 begin
-  Context.Scope.ScopeLock;
-  try
-    V := Context.Scope.GetIdentifier(FIdentifier);
-    if not Assigned(FIdentifierRef) then
-      begin
-        if V is AkvScriptProcedureValue then
-          Result := AkvScriptProcedureValue(V).Call(Context, nil).Duplicate
-        else
-          begin
-            if not (V is AkvValue) then
-              raise EkvScriptNode.Create('Identifier value type not recognised');
-            Result := AkvValue(V).Duplicate;
-          end
-      end
-    else
-      begin
-        R := FIdentifierRef.GetValue(Context, V);
+  V := Context.Scope.GetIdentifier(FIdentifier);
+  if not Assigned(FIdentifierRef) then
+    begin
+      if V is AkvScriptProcedureValue then
+        Result := AkvScriptProcedureValue(V).Call(Context, nil)
+      else
+        begin
+          if not (V is AkvValue) then
+            raise EkvScriptNode.Create('Identifier value type not recognised');
+          Result := AkvValue(V).Duplicate;
+        end
+    end
+  else
+    begin
+      R := FIdentifierRef.GetValue(Context, V, ROwn);
+      try
         if not (R is AkvValue) then
-          raise EkvScriptNode.Create('Not a value');
-        Result := AkvValue(R).Duplicate;
+          raise EkvScriptNode.Create('Identifier reference not a value');
+        if ROwn then
+          begin
+            Result := AkvValue(R);
+            ROwn := False;
+          end
+        else
+          Result := AkvValue(R).Duplicate;
+      finally
+        if ROwn then
+          R.Free;
       end;
-  finally
-    Context.Scope.ScopeUnlock;
-  end;
+    end;
 end;
 
 
@@ -3690,6 +3745,16 @@ begin
     Result := R;
 end;
 
+function TkvScriptProcedureScope.ReleaseLocalIdentifier(const Identifier: String): TObject;
+var
+  R : TObject;
+begin
+  if not FIdentifiers.ReleaseKey(Identifier, R) then
+    Result := nil
+  else
+    Result := R;
+end;
+
 procedure TkvScriptProcedureScope.ScopeLock;
 begin
   if Assigned(FParentScope) then
@@ -3719,7 +3784,6 @@ end;
 
 destructor TkvScriptProcedureValue.Destroy;
 begin
-  FreeAndNil(FLastResult);
   FreeAndNil(FStatement);
   inherited Destroy;
 end;
@@ -3746,8 +3810,6 @@ begin
       S.SetIdentifier(FParamList[I], ParamValues[I].Duplicate);
     C := TkvScriptContext.Create(S, sstStoredProcedure, Context.Session);
     try
-      FreeAndNil(FLastResult);
-
       try
         FStatement.Execute(C);
       except
@@ -3755,18 +3817,16 @@ begin
       else
         raise;
       end;
-      Res := S.GetLocalIdentifier('__RESULT__');
 
+      Res := S.ReleaseLocalIdentifier('__RESULT__');
       if Assigned(Res) then
         begin
           if not (Res is AkvValue) then
             raise EkvScriptNode.Create('Invalid procedure result type');
-          ResV := AkvValue(Res).Duplicate;
+          ResV := AkvValue(Res);
         end
       else
         ResV := nil;
-
-      FLastResult := ResV;
 
       if (DbN <> Context.Session.GetSelectedDatabaseName) or
          (DsN <> Context.Session.GetSelectedDatasetName) then
@@ -3785,7 +3845,6 @@ begin
   end;
   Result := ResV;
 end;
-
 
 
 

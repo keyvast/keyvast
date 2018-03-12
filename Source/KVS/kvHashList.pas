@@ -76,6 +76,7 @@ type
     function  RequireValue(const Key: String): TObject;
     procedure SetValue(const Key: String; const Value: TObject);
     procedure DeleteKey(const Key: String);
+    function  ReleaseKey(const Key: String; var Value: TObject): Boolean;
     procedure Clear;
     function  IterateFirst(var Iterator: TkvStringHashListIterator): PkvStringHashListItem;
     function  IterateNext(var Iterator: TkvStringHashListIterator): PkvStringHashListItem;
@@ -372,6 +373,22 @@ begin
     Dec(FCount);
     First := False;
   until not AllowDup;
+end;
+
+function TkvStringHashList.ReleaseKey(const Key: String; var Value: TObject): Boolean;
+var
+  Itm : PkvStringHashListItem;
+begin
+  if not LocateItem(Key, Itm) then
+    begin
+      Value := nil;
+      Result := False;
+      exit;
+    end;
+  Value := Itm^.Value;
+  Itm^.Value := nil;
+  DeleteKey(Key);
+  Result := True;
 end;
 
 procedure TkvStringHashList.Clear;
