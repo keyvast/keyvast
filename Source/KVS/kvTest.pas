@@ -796,6 +796,8 @@ begin
     Exec('SET @a = [1,2]');
     Exec('EVAL LEN(@a)', '2');
 
+    Exec('EVAL LEN(STRING(LEN("123")))', '1');
+
     Exec('EVAL REPLACE("Hello", "l", "m")', 'Hemmo');
     Exec('EVAL REPLACE("Hello", "l", "")', 'Heo');
 

@@ -8,6 +8,7 @@
 { 2018/02/17  0.04  Binary operators, If statement, If expression }
 { 2018/02/23  0.05  Stored procedures }
 { 2018/03/01  0.06  Push/Pop used database and dataset on procedure call }
+{ 2018/03/12  0.07  Improved locking }
 
 {$INCLUDE kvInclude.inc}
 
@@ -900,6 +901,8 @@ type
     function  GetIdentifier(const Identifier: String): TObject; override;
     procedure SetIdentifier(const Identifier: String; const Value: TObject); override;
     function  GetLocalIdentifier(const Identifier: String): TObject;
+    procedure ScopeLock; override;
+    procedure ScopeUnlock; override;
   end;
 
   TkvScriptCreateProcedureStatement = class(AkvScriptStatement)
@@ -1502,25 +1505,30 @@ var
   V : TObject;
   R : TObject;
 begin
-  V := Context.Scope.GetIdentifier(FIdentifier);
-  if not Assigned(FIdentifierRef) then
-    begin
-      if V is AkvScriptProcedureValue then
-        Result := AkvScriptProcedureValue(V).Call(Context, nil).Duplicate
-      else
-        begin
-          if not (V is AkvValue) then
-            raise EkvScriptNode.Create('Identifier value type not recognised');
-          Result := AkvValue(V).Duplicate;
-        end
-    end
-  else
-    begin
-      R := FIdentifierRef.GetValue(Context, V);
-      if not (R is AkvValue) then
-        raise EkvScriptNode.Create('Not a value');
-      Result := AkvValue(R).Duplicate;
-    end;
+  Context.Scope.ScopeLock;
+  try
+    V := Context.Scope.GetIdentifier(FIdentifier);
+    if not Assigned(FIdentifierRef) then
+      begin
+        if V is AkvScriptProcedureValue then
+          Result := AkvScriptProcedureValue(V).Call(Context, nil).Duplicate
+        else
+          begin
+            if not (V is AkvValue) then
+              raise EkvScriptNode.Create('Identifier value type not recognised');
+            Result := AkvValue(V).Duplicate;
+          end
+      end
+    else
+      begin
+        R := FIdentifierRef.GetValue(Context, V);
+        if not (R is AkvValue) then
+          raise EkvScriptNode.Create('Not a value');
+        Result := AkvValue(R).Duplicate;
+      end;
+  finally
+    Context.Scope.ScopeUnlock;
+  end;
 end;
 
 
@@ -2922,12 +2930,18 @@ begin
         Result := nil;
         exit;
       end;
-    A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+
+    Context.Session.ExecLock;
     try
-      FieldRef.InsertValue(Context, A, V);
-      Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+      try
+        FieldRef.InsertValue(Context, A, V);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      finally
+        A.Free;
+      end;
     finally
-      A.Free;
+      Context.Session.ExecLock;
     end;
 
   finally
@@ -2975,10 +2989,15 @@ begin
       exit;
     end;
 
+  Context.Session.ExecLock;
   try
-    R := FieldRef.GetValue(Context, V).Duplicate;
+    try
+      R := FieldRef.GetValue(Context, V).Duplicate;
+    finally
+      V.Free;
+    end;
   finally
-    V.Free;
+    Context.Session.ExecUnlock;
   end;
 
   Result := R;
@@ -3078,12 +3097,17 @@ begin
       exit;
     end;
 
-  A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+  Context.Session.ExecLock;
   try
-    FieldRef.DeleteValue(Context, A);
-    Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+    A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+    try
+      FieldRef.DeleteValue(Context, A);
+      Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+    finally
+      A.Free;
+    end;
   finally
-    A.Free;
+    Context.Session.ExecUnlock;
   end;
   Result := nil;
 end;
@@ -3134,12 +3158,17 @@ begin
         exit;
       end;
 
-    A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+    Context.Session.ExecLock;
     try
-      FieldRef.UpdateValue(Context, A, V);
-      Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+      try
+        FieldRef.UpdateValue(Context, A, V);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      finally
+        A.Free;
+      end;
     finally
-      A.Free;
+      Context.Session.ExecUnlock;
     end;
 
   finally
@@ -3194,12 +3223,17 @@ begin
         exit;
       end;
 
-    A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+    Context.Session.ExecLock;
     try
-      FieldRef.AppendValue(Context, A, V);
-      Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+      try
+        FieldRef.AppendValue(Context, A, V);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      finally
+        A.Free;
+      end;
     finally
-      A.Free;
+      Context.Session.ExecUnlock;
     end;
 
   finally
@@ -3656,6 +3690,18 @@ begin
     Result := R;
 end;
 
+procedure TkvScriptProcedureScope.ScopeLock;
+begin
+  if Assigned(FParentScope) then
+    FParentScope.ScopeLock;
+end;
+
+procedure TkvScriptProcedureScope.ScopeUnlock;
+begin
+  if Assigned(FParentScope) then
+    FParentScope.ScopeUnlock;
+end;
+
 
 
 { TkvProcedureValue }
@@ -3698,7 +3744,7 @@ begin
   try
     for I := 0 to L - 1 do
       S.SetIdentifier(FParamList[I], ParamValues[I].Duplicate);
-    C := TkvScriptContext.Create(S, Context.Session);
+    C := TkvScriptContext.Create(S, sstStoredProcedure, Context.Session);
     try
       FreeAndNil(FLastResult);
 
@@ -3854,6 +3900,8 @@ function TkvScriptReturnStatement.Execute(const Context: TkvScriptContext): AkvV
 var
   RetV : AkvValue;
 begin
+  if Context.ScopeType <> sstStoredProcedure then
+    raise EkvScriptNode.Create('RETURN only allowed in stored procedure');
   RetV := FValueExpr.Evaluate(Context);
   Context.Scope.SetIdentifier('__RESULT__', RetV);
   raise EkvScriptReturnSignal.Create('');

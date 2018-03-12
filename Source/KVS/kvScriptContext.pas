@@ -27,6 +27,8 @@ type
   public
     function  GetIdentifier(const Identifier: String): TObject; virtual; abstract;
     procedure SetIdentifier(const Identifier: String; const Value: TObject); virtual; abstract;
+    procedure ScopeLock; virtual; abstract;
+    procedure ScopeUnlock; virtual; abstract;
   end;
 
 
@@ -37,6 +39,9 @@ type
 
   AkvScriptSession = class
   public
+    procedure ExecLock; virtual; abstract;
+    procedure ExecUnlock; virtual; abstract;
+
     function  AllocateSystemUniqueId: UInt64; virtual; abstract;
 
     function  CreateDatabase(const Name: String): TkvDatabase; virtual; abstract;
@@ -82,16 +87,22 @@ type
 
   { Context }
 
+  TkvScriptScopeType = (sstGlobal, sstStoredProcedure);
+
   TkvScriptContext = class
   protected
-    FScope   : AkvScriptScope;
-    FSession : AkvScriptSession;
+    FScope     : AkvScriptScope;
+    FScopeType : TkvScriptScopeType;
+    FSession   : AkvScriptSession;
 
   public
-    constructor Create(const Scope: AkvScriptScope; const Session: AkvScriptSession);
+    constructor Create(const Scope: AkvScriptScope;
+                const ScopeType: TkvScriptScopeType;
+                const Session: AkvScriptSession);
 
-    property Scope: AkvScriptScope read FScope;
-    property Session: AkvScriptSession read FSession;
+    property  Scope: AkvScriptScope read FScope;
+    property  ScopeType: TkvScriptScopeType read FScopeType;
+    property  Session: AkvScriptSession read FSession;
   end;
 
 
@@ -103,10 +114,12 @@ implementation
 { TkvScriptContext }
 
 constructor TkvScriptContext.Create(const Scope: AkvScriptScope;
+            const ScopeType: TkvScriptScopeType;
             const Session: AkvScriptSession);
 begin
   inherited Create;
   FScope := Scope;
+  FScopeType := ScopeType;
   FSession := Session;
 end;
 

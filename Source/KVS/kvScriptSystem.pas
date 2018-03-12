@@ -5,6 +5,7 @@
 { 2018/02/10  0.01  Initial development }
 { 2018/02/28  0.02  Improve usage of selected database/dataset }
 { 2018/03/01  0.03  Persistent stored procedures and related SysInfo }
+{ 2018/03/12  0.04  Improve locking }
 
 {$INCLUDE kvInclude.inc}
 
@@ -47,6 +48,8 @@ type
 
     function  GetIdentifier(const Identifier: String): TObject; override;
     procedure SetIdentifier(const Identifier: String; const Value: TObject); override;
+    procedure ScopeLock; override;
+    procedure ScopeUnlock; override;
   end;
 
   TkvSession = class(AkvScriptSession)
@@ -74,6 +77,9 @@ type
     property  ScriptContext: TkvScriptContext read FContext;
 
     procedure Close;
+
+    procedure ExecLock; override;
+    procedure ExecUnlock; override;
 
     function  AllocateSystemUniqueId: UInt64; override;
 
@@ -119,7 +125,7 @@ type
 
   TkvScriptStoredProcedure = class
   private
-    FScript : String;
+    FScript    : String;
     FProcValue : TkvScriptProcedureValue;
 
   public
@@ -134,7 +140,7 @@ type
   private
     FStoredProcList : TkvStringHashList;
 
-    function GetStoredProcByName(const Name: String): TkvScriptStoredProcedure;
+    function  GetStoredProcByName(const Name: String): TkvScriptStoredProcedure;
 
   public
     constructor Create;
@@ -150,13 +156,18 @@ type
 
   TkvScriptSystemScope = class
   private
+    FSystem : TkvScriptSystem;
+
+    FLock        : TCriticalSection;
     FIdentifiers : TkvStringHashList;
 
   public
-    constructor Create;
+    constructor Create(const System: TkvScriptSystem);
     destructor Destroy; override;
 
     function  GetIdentifier(const Session: TkvSession; const Identifier: String): TObject;
+    procedure ScopeLock;
+    procedure ScopeUnlock;
   end;
 
   TkvScriptSystem = class
@@ -168,6 +179,11 @@ type
     FSessionLock  : TCriticalSection;
     FExecLock     : TCriticalSection;
     FDatabaseList : TkvStringHashList;
+
+    procedure SessionLock;
+    procedure SessionUnlock;
+    procedure ExecLock;
+    procedure ExecUnlock;
 
     function  GetSessionIndex(const Session: TkvSession): Integer;
     procedure RemoveSessionByIndex(const Index: Integer);
@@ -319,6 +335,16 @@ begin
     FIdentifiers.Add(Identifier, Value)
 end;
 
+procedure TkvSessionScope.ScopeLock;
+begin
+  FParentScope.ScopeLock;
+end;
+
+procedure TkvSessionScope.ScopeUnlock;
+begin
+  FParentScope.ScopeUnlock;
+end;
+
 
 
 { TkvSession }
@@ -328,7 +354,7 @@ begin
   inherited Create;
   FSystem := System;
   FLocalScope := TkvSessionScope.Create(self, System.FScope);
-  FContext := TkvScriptContext.Create(FLocalScope, self);
+  FContext := TkvScriptContext.Create(FLocalScope, sstGlobal, self);
 end;
 
 destructor TkvSession.Destroy;
@@ -342,6 +368,16 @@ end;
 procedure TkvSession.Close;
 begin
   FSystem.SessionClose(self);
+end;
+
+procedure TkvSession.ExecLock;
+begin
+  FSystem.ExecLock;
+end;
+
+procedure TkvSession.ExecUnlock;
+begin
+  FSystem.ExecUnlock;
 end;
 
 function TkvSession.AllocateSystemUniqueId: UInt64;
@@ -583,9 +619,12 @@ end;
 
 { TkvScriptSessionSystemScope }
 
-constructor TkvScriptSystemScope.Create;
+constructor TkvScriptSystemScope.Create(const System: TkvScriptSystem);
 begin
+  Assert(Assigned(System));
   inherited Create;
+  FSystem := System;
+  FLock := TCriticalSection.Create;
   FIdentifiers := TkvStringHashList.Create(False, False, True);
   FIdentifiers.Add('LEN', TkvScriptLengthBuiltInFunction.Create);
   FIdentifiers.Add('INTEGER', TkvScriptIntegerCastBuiltInFunction.Create);
@@ -615,6 +654,7 @@ end;
 destructor TkvScriptSystemScope.Destroy;
 begin
   FreeAndNil(FIdentifiers);
+  FreeAndNil(FLock);
   inherited Destroy;
 end;
 
@@ -653,6 +693,16 @@ begin
         raise EkvScriptScope.CreateFmt('Identifier not defined: %s', [Identifier]);
     end;
   Result := R;
+end;
+
+procedure TkvScriptSystemScope.ScopeLock;
+begin
+  FLock.Acquire;
+end;
+
+procedure TkvScriptSystemScope.ScopeUnlock;
+begin
+  FLock.Release;
 end;
 
 
@@ -722,7 +772,7 @@ begin
   FSessionLock := TCriticalSection.Create;
   FExecLock := TCriticalSection.Create;
   FDatabaseList := TkvStringHashList.Create(False, False, True);
-  FScope := TkvScriptSystemScope.Create;
+  FScope := TkvScriptSystemScope.Create(self);
 end;
 
 destructor TkvScriptSystem.Destroy;
@@ -736,6 +786,26 @@ begin
   FreeAndNil(FExecLock);
   FreeAndNil(FSessionLock);
   inherited Destroy;
+end;
+
+procedure TkvScriptSystem.SessionLock;
+begin
+  FSessionLock.Acquire;
+end;
+
+procedure TkvScriptSystem.SessionUnlock;
+begin
+  FSessionLock.Release;
+end;
+
+procedure TkvScriptSystem.ExecLock;
+begin
+  FExecLock.Acquire;
+end;
+
+procedure TkvScriptSystem.ExecUnlock;
+begin
+  FExecLock.Release;
 end;
 
 procedure TkvScriptSystem.Open;
@@ -762,11 +832,11 @@ end;
 
 function TkvScriptSystem.GetSessionCount: Integer;
 begin
-  FSessionLock.Acquire;
+  SessionLock;
   try
     Result := Length(FSessionList);
   finally
-    FSessionLock.Release;
+    SessionUnlock;
   end;
 end;
 
@@ -774,13 +844,13 @@ procedure TkvScriptSystem.ClearSessions;
 var
   I : Integer;
 begin
-  FSessionLock.Acquire;
+  SessionLock;
   try
     for I := Length(FSessionList) - 1 downto 0 do
      FreeAndNil(FSessionList[I]);
     SetLength(FSessionList, 0);
   finally
-    FSessionLock.Release;
+    SessionUnlock;
   end;
 end;
 
@@ -790,13 +860,13 @@ var
   L : Integer;
 begin
   S := TkvSession.Create(self);
-  FSessionLock.Acquire;
+  SessionLock;
   try
     L := Length(FSessionList);
     SetLength(FSessionList, L + 1);
     FSessionList[L] := S;
   finally
-    FSessionLock.Release;
+    SessionUnlock;
   end;
   Result := S;
 end;
@@ -836,14 +906,14 @@ procedure TkvScriptSystem.RemoveSession(const Session: TkvSession);
 var
   I : Integer;
 begin
-  FSessionLock.Acquire;
+  SessionLock;
   try
     I := GetSessionIndex(Session);
     if I < 0 then
       raise EkvObject.Create('Session not found');
     RemoveSessionByIndex(I);
   finally
-    FSessionLock.Release;
+    SessionUnlock;
   end;
 end;
 
@@ -925,23 +995,23 @@ end;
 
 function TkvScriptSystem.AllocateSystemUniqueId(const Session: TkvSession): UInt64;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.AllocateSystemUniqueId;
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.CreateDatabase(const Session: TkvSession; const Name: String): TkvDatabase;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.CreateDatabase(Name);
     FSystem.SysInfoDataset.AddRecordNull('db:' + Name);
     AddScriptDatabase(Name);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -956,21 +1026,21 @@ begin
   Im := Db.FStoredProcList.IterateFirst(It);
   while Assigned(Im) do
     begin
-      FSystem.SysInfoDataset.DeleteRecord('sp:' + DatabaseName + ':' +Im^.Key);
+      FSystem.SysInfoDataset.DeleteRecord('sp:' + DatabaseName + ':' + Im^.Key);
       Im := Db.FStoredProcList.IterateNext(It);
     end;
 end;
 
 procedure TkvScriptSystem.DropDatabase(const Session: TkvSession; const Name: String);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.DropDatabase(Name);
     FSystem.SysInfoDataset.DeleteRecord('db:' + Name);
     DropDatabaseStoredProcedures(Name);
     RemoveScriptDatabase(Name);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -981,7 +1051,7 @@ var
   ItR : Boolean;
   It : TkvDatabaseListIterator;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     L := FSystem.GetDatabaseCount;
     SetLength(R, L);
@@ -994,7 +1064,7 @@ begin
         Inc(I);
       end;
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
   Result := R;
 end;
@@ -1002,33 +1072,33 @@ end;
 function TkvScriptSystem.AllocateDatabaseUniqueId(const Session: TkvSession;
          const DatabaseName: String): UInt64;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.AllocateDatabaseUniqueId(DatabaseName);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.CreateDataset(const Session: TkvSession;
          const DatabaseName, DatasetName: String): TkvDataset;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.CreateDataset(DatabaseName, DatasetName);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.DropDataset(const Session: TkvSession;
           const DatabaseName, DatasetName: String);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.DropDataset(DatabaseName, DatasetName);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1041,7 +1111,7 @@ var
   It : TkvDatasetListIterator;
   R : TkvKeyNameArray;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Db := FSystem.RequireDatabaseByName(DatabaseName);
     L := Db.GetDatasetCount;
@@ -1055,7 +1125,7 @@ begin
         Inc(I);
       end;
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
   Result := R;
 end;
@@ -1063,11 +1133,11 @@ end;
 function TkvScriptSystem.AllocateDatasetUniqueId(const Session: TkvSession;
          const DatabaseName, DatasetName: String): UInt64;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.AllocateDatasetUniqueId(DatabaseName, DatasetName);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1075,14 +1145,14 @@ procedure TkvScriptSystem.UseDatabase(const Session: TkvSession;
           const Name: String;
           out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     if not FSystem.DatabaseExists(Name) then
       raise EkvSession.CreateFmt('Database does not exist: %s', [Name]);
     Database := FSystem.RequireDatabaseByName(Name);
     ScriptDatabase := GetScriptDatabaseByName(Name);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1092,7 +1162,7 @@ procedure TkvScriptSystem.UseDataset(
           out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase;
           out Dataset: TkvDataset);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     if not FSystem.DatabaseExists(DatabaseName) then
       raise EkvSession.CreateFmt('Database does not exist: %s', [DatabaseName]);
@@ -1102,7 +1172,7 @@ begin
     ScriptDatabase := GetScriptDatabaseByName(DatabaseName);
     Dataset := Database.RequireDatasetByName(DatasetName);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1114,95 +1184,95 @@ end;
 procedure TkvScriptSystem.AddRecord(const Session: TkvSession;
           const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.AddRecord(DatabaseName, DatasetName, Key, Value);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.AddRecord(const Session: TkvSession;
           const Dataset: TkvDataset; const Key: String; const Value: AkvValue);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.AddRecord(Dataset, Key, Value);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.MakePath(const Session: TkvSession; const DatabaseName, DatasetName, KeyPath: String);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.MakePath(DatabaseName, DatasetName, KeyPath);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.MakePath(const Session: TkvSession; const Dataset: TkvDataset;
           const KeyPath: String);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.MakePath(Dataset, KeyPath);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.RecordExists(const Session: TkvSession; const DatabaseName, DatasetName, Key: String): Boolean;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.RecordExists(DatabaseName, DatasetName, Key);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.RecordExists(const Session: TkvSession;
          const Dataset: TkvDataset; const Key: String): Boolean;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.RecordExists(Dataset, Key);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.GetRecord(const Session: TkvSession; const DatabaseName, DatasetName, Key: String): AkvValue;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.GetRecord(DatabaseName, DatasetName, Key);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.GetRecord(const Session: TkvSession;
          const Dataset: TkvDataset; const Key: String): AkvValue;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.GetRecord(Dataset, Key);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.DeleteRecord(const Session: TkvSession; const DatabaseName, DatasetName, Key: String);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.DeleteRecord(DatabaseName, DatasetName, Key);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1210,22 +1280,22 @@ procedure TkvScriptSystem.DeleteRecord(const Session: TkvSession;
           const Dataset: TkvDataset;
           const Key: String);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.DeleteRecord(Dataset, Key);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.SetRecord(const Session: TkvSession;
           const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.SetRecord(DatabaseName, DatasetName, Key, Value);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1233,11 +1303,11 @@ procedure TkvScriptSystem.SetRecord(const Session: TkvSession;
           const Dataset: TkvDataset;
           const Key: String; const Value: AkvValue);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.SetRecord(Dataset, Key, Value);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1245,22 +1315,22 @@ procedure TkvScriptSystem.AppendRecord(const Session: TkvSession;
           const DatabaseName, DatasetName, Key: String;
           const Value: AkvValue);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.AppendRecord(DatabaseName, DatasetName, Key, Value);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.AppendRecord(const Session: TkvSession; const Dataset: TkvDataset;
           const Key: String; const Value: AkvValue);
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     FSystem.AppendRecord(Dataset, Key, Value);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1269,44 +1339,44 @@ function TkvScriptSystem.IterateRecords(const Session: TkvSession;
          const Path: String;
          out Iterator: TkvDatasetIterator): Boolean;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.IterateRecords(DatabaseName, DatasetName, Path, Iterator);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.IterateNextRecord(const Session: TkvSession;
          var Iterator: TkvDatasetIterator): Boolean;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.IterateNextRecord(Iterator);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.IteratorGetKey(const Session: TkvSession;
          const Iterator: TkvDatasetIterator): String;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.IteratorGetKey(Iterator);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.IteratorGetValue(const Session: TkvSession;
          const Iterator: TkvDatasetIterator): AkvValue;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Result := FSystem.IteratorGetValue(Iterator);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1316,7 +1386,7 @@ var
   Db : TkvScriptDatabase;
 begin
   Assert(DatabaseName <> '');
-  FExecLock.Acquire;
+  ExecLock;
   try
     Db := GetOrAddScriptDatabase(DatabaseName);
     Db.AddStoredProc(ProcedureName, Script);
@@ -1325,7 +1395,7 @@ begin
         'sp:' + DatabaseName + ':' + ProcedureName,
         Script);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
@@ -1334,7 +1404,7 @@ procedure TkvScriptSystem.DropStoredProcedure(const Session: TkvSession;
 var
   Db : TkvScriptDatabase;
 begin
-  FExecLock.Acquire;
+  ExecLock;
   try
     Db := GetScriptDatabaseByName(DatabaseName);
     if not Assigned(Db) then
@@ -1344,7 +1414,7 @@ begin
     FSystem.SysInfoDataset.DeleteRecord(
         'sp:' + DatabaseName + ':' + ProcedureName);
   finally
-    FExecLock.Release;
+    ExecUnlock;
   end;
 end;
 
