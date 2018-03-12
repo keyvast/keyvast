@@ -14,6 +14,7 @@
 { 2018/03/05  0.09  AppendRecord for string and binary}
 { 2018/03/06  0.10  AppendRecord for list and dictionary }
 { 2018/03/07  0.11  Dictionary append improvement }
+{ 2018/03/12  0.12  Lists refactor }
 
 {$INCLUDE kvInclude.inc}
 
@@ -197,8 +198,8 @@ type
     FSystemName   : String;
     FDatabaseName : String;
 
-    FFile     : TkvDatasetListFile;
-    FHashList : TkvStringHashList;
+    FFile : TkvDatasetListFile;
+    FList : TkvStringHashList;
 
     procedure ListClear;
     procedure ListAppend(const Item: TkvDataset);
@@ -283,8 +284,8 @@ type
     FPath       : String;
     FSystemName : String;
 
-    FFile     : TkvDatabaseListFile;
-    FHashList : TkvStringHashList;
+    FFile : TkvDatabaseListFile;
+    FList : TkvStringHashList;
 
     procedure ListClear;
     procedure ListAppend(const Item: TkvDatabase);
@@ -1865,26 +1866,26 @@ begin
   FSystemName := SystemName;
   FDatabaseName := DatabaseName;
 
-  FHashList := TkvStringHashList.Create(False, False, True);
+  FList := TkvStringHashList.Create(False, False, True);
   FFile := TkvDatasetListFile.Create(Path, SystemName, DatabaseName);
 end;
 
 destructor TkvDatasetList.Destroy;
 begin
   FreeAndNil(FFile);
-  FreeAndNil(FHashList);
+  FreeAndNil(FList);
   inherited Destroy;
 end;
 
 procedure TkvDatasetList.ListClear;
 begin
-  FHashList.Clear;
+  FList.Clear;
 end;
 
 procedure TkvDatasetList.ListAppend(const Item: TkvDataset);
 begin
   Assert(Assigned(Item));
-  FHashList.Add(Item.Name, Item);
+  FList.Add(Item.Name, Item);
 end;
 
 procedure TkvDatasetList.OpenNew;
@@ -1936,14 +1937,14 @@ end;
 
 function TkvDatasetList.GetCount: Integer;
 begin
-  Result := FHashList.Count;
+  Result := FList.Count;
 end;
 
 function TkvDatasetList.IterateFirst(var Iterator: TkvDatasetListIterator): Boolean;
 var
   R : Boolean;
 begin
-  Iterator.Item := FHashList.IterateFirst(Iterator.Iterator);
+  Iterator.Item := FList.IterateFirst(Iterator.Iterator);
   R := Assigned(Iterator.Item);
   if R then
     begin
@@ -1957,7 +1958,7 @@ function TkvDatasetList.IterateNext(var Iterator: TkvDatasetListIterator): Boole
 var
   R : Boolean;
 begin
-  Iterator.Item := FHashList.IterateNext(Iterator.Iterator);
+  Iterator.Item := FList.IterateNext(Iterator.Iterator);
   R := Assigned(Iterator.Item);
   if R then
     begin
@@ -1969,7 +1970,7 @@ end;
 
 function TkvDatasetList.Exists(const Name: String): Boolean;
 begin
-  Result := FHashList.KeyExists(Name);
+  Result := FList.KeyExists(Name);
 end;
 
 function TkvDatasetList.Add(const Name: String): TkvDataset;
@@ -1987,7 +1988,7 @@ end;
 
 function TkvDatasetList.RequireItemByName(const Name: String): TkvDataset;
 begin
-  Result := TkvDataset(FHashList.RequireValue(Name));
+  Result := TkvDataset(FList.RequireValue(Name));
 end;
 
 procedure TkvDatasetList.Remove(const Name: String);
@@ -1997,12 +1998,12 @@ var
 begin
   Assert(Assigned(FFile));
 
-  if not FHashList.GetValue(Name, DsO) then
+  if not FList.GetValue(Name, DsO) then
     raise EkvObject.CreateFmt('Dataset not found: %s', [Name]);
   Ds := TkvDataset(DsO);
   Include(Ds.FDatasetListRec.Flags, dslfrfDeleted);
   FFile.SaveRecord(Ds.FDatasetListIdx, Ds.FDatasetListRec);
-  FHashList.DeleteKey(Name);
+  FList.DeleteKey(Name);
 end;
 
 procedure TkvDatasetList.SaveDataset(const Dataset: TkvDataset);
@@ -2121,26 +2122,26 @@ begin
   FPath := Path;
   FSystemName := SystemName;
 
-  FHashList := TkvStringHashList.Create(False, False, True);
+  FList := TkvStringHashList.Create(False, False, True);
   FFile := TkvDatabaseListFile.Create(Path, SystemName);
 end;
 
 destructor TkvDatabaseList.Destroy;
 begin
   FreeAndNil(FFile);
-  FreeAndNil(FHashList);
+  FreeAndNil(FList);
   inherited Destroy;
 end;
 
 procedure TkvDatabaseList.ListClear;
 begin
-  FHashList.Clear;
+  FList.Clear;
 end;
 
 procedure TkvDatabaseList.ListAppend(const Item: TkvDatabase);
 begin
   Assert(Assigned(Item));
-  FHashList.Add(Item.Name, Item);
+  FList.Add(Item.Name, Item);
 end;
 
 procedure TkvDatabaseList.OpenNew;
@@ -2192,14 +2193,14 @@ end;
 
 function TkvDatabaseList.GetCount: Integer;
 begin
-  Result := FHashList.Count;
+  Result := FList.Count;
 end;
 
 function TkvDatabaseList.IterateFirst(var Iterator: TkvDatabaseListIterator): Boolean;
 var
   R : Boolean;
 begin
-  Iterator.Item := FHashList.IterateFirst(Iterator.Iterator);
+  Iterator.Item := FList.IterateFirst(Iterator.Iterator);
   R := Assigned(Iterator.Item);
   if R then
     begin
@@ -2213,7 +2214,7 @@ function TkvDatabaseList.IterateNext(var Iterator: TkvDatabaseListIterator): Boo
 var
   R : Boolean;
 begin
-  Iterator.Item := FHashList.IterateNext(Iterator.Iterator);
+  Iterator.Item := FList.IterateNext(Iterator.Iterator);
   R := Assigned(Iterator.Item);
   if R then
     begin
@@ -2225,7 +2226,7 @@ end;
 
 function TkvDatabaseList.DatabaseExists(const Name: String): Boolean;
 begin
-  Result := FHashList.KeyExists(Name);
+  Result := FList.KeyExists(Name);
 end;
 
 function TkvDatabaseList.AddDatabase(const Name: String): TkvDatabase;
@@ -2248,7 +2249,7 @@ function TkvDatabaseList.GetDatabaseByName(const Name: String): TkvDatabase;
 var
   V : TObject;
 begin
-  if not FHashList.GetValue(Name, V) then
+  if not FList.GetValue(Name, V) then
     Result := nil
   else
     Result := TkvDatabase(V);
@@ -2256,7 +2257,7 @@ end;
 
 function TkvDatabaseList.RequireDatabaseByName(const Name: String): TkvDatabase;
 begin
-  Result := TkvDatabase(FHashList.RequireValue(Name));
+  Result := TkvDatabase(FList.RequireValue(Name));
 end;
 
 procedure TkvDatabaseList.SaveDatabase(const Database: TkvDatabase);
@@ -2274,12 +2275,12 @@ var
 begin
   Assert(Assigned(FFile));
 
-  if not FHashList.GetValue(Name, DbO) then
+  if not FList.GetValue(Name, DbO) then
     raise EkvObject.CreateFmt('Database not found: %s', [Name]);
   Db := TkvDatabase(DbO);
   Include(Db.FDatabaseListRec.Flags, dblfrfDeleted);
   FFile.SaveRecord(Db.FDatabaseListIdx, Db.FDatabaseListRec);
-  FHashList.DeleteKey(Name);
+  FList.DeleteKey(Name);
 end;
 
 
