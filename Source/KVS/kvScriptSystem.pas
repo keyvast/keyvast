@@ -161,6 +161,11 @@ type
 
     FIdentifiers : TkvStringHashList;
 
+    function  GetProcValueFromDatabase(const Session: TkvSession;
+              const Database: TkvScriptDatabase;
+              const Identifier: String;
+              out Found: Boolean): TkvScriptProcedureValue;
+
   public
     constructor Create(const System: TkvScriptSystem);
     destructor Destroy; override;
@@ -644,44 +649,53 @@ begin
   inherited Destroy;
 end;
 
+function TkvScriptSystemScope.GetProcValueFromDatabase(const Session: TkvSession;
+         const Database: TkvScriptDatabase;
+         const Identifier: String;
+         out Found: Boolean): TkvScriptProcedureValue;
+var
+  SP : TkvScriptStoredProcedure;
+  N : AkvScriptNode;
+begin
+  Found := False;
+  Result := nil;
+  Database.Lock;
+  try
+    SP := Database.GetStoredProcByName(Identifier);
+    if Assigned(SP) then
+      begin
+        if not Assigned(SP.FProcValue) then
+          begin
+            N := Session.ParseScript(SP.FScript);
+            try
+              if not (N is TkvScriptCreateProcedureStatement) then
+                raise EkvScriptScope.CreateFmt('Invalid stored procedure: %s', [Identifier]);
+              SP.FProcValue := TkvScriptCreateProcedureStatement(N).GetScriptProcedureValue;
+            finally
+              N.Free;
+            end;
+          end;
+        Result := SP.FProcValue;
+        Found := True;
+      end;
+  finally
+    Database.Unlock;
+  end;
+end;
+
 function TkvScriptSystemScope.GetIdentifier(const Session: TkvSession;
          const Identifier: String): TObject;
 var
   F : Boolean;
   R : TObject;
-  SP : TkvScriptStoredProcedure;
   SDb : TkvScriptDatabase;
-  N : AkvScriptNode;
 begin
   F := FIdentifiers.GetValue(Identifier, R);
   if not F then
     begin
       SDb := Session.FSelectedScriptDatabase;
       if Assigned(SDb) then
-        begin
-          SDb.Lock;
-          try
-            SP := SDb.GetStoredProcByName(Identifier);
-            if Assigned(SP) then
-              begin
-                if not Assigned(SP.FProcValue) then
-                  begin
-                    N := Session.ParseScript(SP.FScript);
-                    try
-                      if not (N is TkvScriptCreateProcedureStatement) then
-                        raise EkvScriptScope.CreateFmt('Invalid stored procedure: %s', [Identifier]);
-                      SP.FProcValue := TkvScriptCreateProcedureStatement(N).GetScriptProcedureValue;
-                    finally
-                      N.Free;
-                    end;
-                  end;
-                R := SP.FProcValue;
-                F := True;
-              end;
-          finally
-            SDb.Unlock;
-          end;
-        end;
+        R := GetProcValueFromDatabase(Session, SDb, Identifier, F);
       if not F then
         raise EkvScriptScope.CreateFmt('Identifier not defined: %s', [Identifier]);
     end;
