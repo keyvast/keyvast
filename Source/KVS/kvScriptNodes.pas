@@ -3044,15 +3044,10 @@ begin
       exit;
     end;
 
-  Context.Session.ExecLock;
   try
-    try
-      R := FieldRef.GetValue(Context, V).Duplicate;
-    finally
-      V.Free;
-    end;
+    R := FieldRef.GetValue(Context, V).Duplicate;
   finally
-    Context.Session.ExecUnlock;
+    V.Free;
   end;
 
   Result := R;
