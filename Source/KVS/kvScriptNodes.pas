@@ -2996,7 +2996,7 @@ begin
         A.Free;
       end;
     finally
-      Context.Session.ExecLock;
+      Context.Session.ExecUnlock;
     end;
 
   finally
