@@ -901,8 +901,6 @@ type
     procedure SetIdentifier(const Identifier: String; const Value: TObject); override;
     function  GetLocalIdentifier(const Identifier: String): TObject;
     function  ReleaseLocalIdentifier(const Identifier: String): TObject;
-    procedure ScopeLock; override;
-    procedure ScopeUnlock; override;
   end;
 
   TkvScriptCreateProcedureStatement = class(AkvScriptStatement)
@@ -3744,22 +3742,10 @@ function TkvScriptProcedureScope.ReleaseLocalIdentifier(const Identifier: String
 var
   R : TObject;
 begin
-  if not FIdentifiers.ReleaseKey(Identifier, R) then
+  if not FIdentifiers.RemoveKey(Identifier, R) then
     Result := nil
   else
     Result := R;
-end;
-
-procedure TkvScriptProcedureScope.ScopeLock;
-begin
-  if Assigned(FParentScope) then
-    FParentScope.ScopeLock;
-end;
-
-procedure TkvScriptProcedureScope.ScopeUnlock;
-begin
-  if Assigned(FParentScope) then
-    FParentScope.ScopeUnlock;
 end;
 
 

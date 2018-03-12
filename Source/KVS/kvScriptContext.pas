@@ -27,8 +27,6 @@ type
   public
     function  GetIdentifier(const Identifier: String): TObject; virtual; abstract;
     procedure SetIdentifier(const Identifier: String; const Value: TObject); virtual; abstract;
-    procedure ScopeLock; virtual; abstract;
-    procedure ScopeUnlock; virtual; abstract;
   end;
 
 

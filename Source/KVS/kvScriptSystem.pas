@@ -48,8 +48,6 @@ type
 
     function  GetIdentifier(const Identifier: String): TObject; override;
     procedure SetIdentifier(const Identifier: String; const Value: TObject); override;
-    procedure ScopeLock; override;
-    procedure ScopeUnlock; override;
   end;
 
   TkvSession = class(AkvScriptSession)
@@ -138,8 +136,11 @@ type
 
   TkvScriptDatabase = class
   private
+    FLock           : TCriticalSection;
     FStoredProcList : TkvStringHashList;
 
+    procedure Lock;
+    procedure Unlock;
     function  GetStoredProcByName(const Name: String): TkvScriptStoredProcedure;
 
   public
@@ -158,7 +159,6 @@ type
   private
     FSystem : TkvScriptSystem;
 
-    FLock        : TCriticalSection;
     FIdentifiers : TkvStringHashList;
 
   public
@@ -166,8 +166,6 @@ type
     destructor Destroy; override;
 
     function  GetIdentifier(const Session: TkvSession; const Identifier: String): TObject;
-    procedure ScopeLock;
-    procedure ScopeUnlock;
   end;
 
   TkvScriptSystem = class
@@ -175,8 +173,8 @@ type
     FSystem : TkvSystem;
 
     FScope        : TkvScriptSystemScope;
-    FSessionList  : array of TkvSession;
     FSessionLock  : TCriticalSection;
+    FSessionList  : array of TkvSession;
     FExecLock     : TCriticalSection;
     FDatabaseList : TkvStringHashList;
 
@@ -333,16 +331,6 @@ begin
     FIdentifiers.SetValue(Identifier, Value)
   else
     FIdentifiers.Add(Identifier, Value)
-end;
-
-procedure TkvSessionScope.ScopeLock;
-begin
-  FParentScope.ScopeLock;
-end;
-
-procedure TkvSessionScope.ScopeUnlock;
-begin
-  FParentScope.ScopeUnlock;
 end;
 
 
@@ -624,7 +612,6 @@ begin
   Assert(Assigned(System));
   inherited Create;
   FSystem := System;
-  FLock := TCriticalSection.Create;
   FIdentifiers := TkvStringHashList.Create(False, False, True);
   FIdentifiers.Add('LEN', TkvScriptLengthBuiltInFunction.Create);
   FIdentifiers.Add('INTEGER', TkvScriptIntegerCastBuiltInFunction.Create);
@@ -654,7 +641,6 @@ end;
 destructor TkvScriptSystemScope.Destroy;
 begin
   FreeAndNil(FIdentifiers);
-  FreeAndNil(FLock);
   inherited Destroy;
 end;
 
@@ -664,45 +650,42 @@ var
   F : Boolean;
   R : TObject;
   SP : TkvScriptStoredProcedure;
+  SDb : TkvScriptDatabase;
   N : AkvScriptNode;
 begin
   F := FIdentifiers.GetValue(Identifier, R);
   if not F then
     begin
-      if Assigned(Session.FSelectedScriptDatabase) then
+      SDb := Session.FSelectedScriptDatabase;
+      if Assigned(SDb) then
         begin
-          SP := Session.FSelectedScriptDatabase.GetStoredProcByName(Identifier);
-          if Assigned(SP) then
-            begin
-              if not Assigned(SP.FProcValue) then
-                begin
-                  N := Session.ParseScript(SP.FScript);
-                  try
-                    if not (N is TkvScriptCreateProcedureStatement) then
-                      raise EkvScriptScope.CreateFmt('Invalid stored procedure: %s', [Identifier]);
-                    SP.FProcValue := TkvScriptCreateProcedureStatement(N).GetScriptProcedureValue;
-                  finally
-                    N.Free;
+          SDb.Lock;
+          try
+            SP := SDb.GetStoredProcByName(Identifier);
+            if Assigned(SP) then
+              begin
+                if not Assigned(SP.FProcValue) then
+                  begin
+                    N := Session.ParseScript(SP.FScript);
+                    try
+                      if not (N is TkvScriptCreateProcedureStatement) then
+                        raise EkvScriptScope.CreateFmt('Invalid stored procedure: %s', [Identifier]);
+                      SP.FProcValue := TkvScriptCreateProcedureStatement(N).GetScriptProcedureValue;
+                    finally
+                      N.Free;
+                    end;
                   end;
-                end;
-              R := SP.FProcValue;
-              F := True;
-            end;
+                R := SP.FProcValue;
+                F := True;
+              end;
+          finally
+            SDb.Unlock;
+          end;
         end;
       if not F then
         raise EkvScriptScope.CreateFmt('Identifier not defined: %s', [Identifier]);
     end;
   Result := R;
-end;
-
-procedure TkvScriptSystemScope.ScopeLock;
-begin
-  FLock.Acquire;
-end;
-
-procedure TkvScriptSystemScope.ScopeUnlock;
-begin
-  FLock.Release;
 end;
 
 
@@ -728,13 +711,25 @@ end;
 constructor TkvScriptDatabase.Create;
 begin
   inherited Create;
+  FLock := TCriticalSection.Create;
   FStoredProcList := TkvStringHashList.Create(False, False, True);
 end;
 
 destructor TkvScriptDatabase.Destroy;
 begin
   FreeAndNil(FStoredProcList);
+  FreeAndNil(FLock);
   inherited Destroy;
+end;
+
+procedure TkvScriptDatabase.Lock;
+begin
+  FLock.Acquire;
+end;
+
+procedure TkvScriptDatabase.Unlock;
+begin
+  FLock.Release;
 end;
 
 function TkvScriptDatabase.GetStoredProcByName(const Name: String): TkvScriptStoredProcedure;
@@ -752,12 +747,22 @@ var
   Proc : TkvScriptStoredProcedure;
 begin
   Proc := TkvScriptStoredProcedure.Create(Script);
-  FStoredProcList.Add(Name, Proc);
+  Lock;
+  try
+    FStoredProcList.Add(Name, Proc);
+  finally
+    Unlock;
+  end;
 end;
 
 procedure TkvScriptDatabase.RemoveStoredProc(const Name: String);
 begin
-  FStoredProcList.DeleteKey(Name);
+  Lock;
+  try
+    FStoredProcList.DeleteKey(Name);
+  finally
+    Unlock;
+  end;
 end;
 
 
