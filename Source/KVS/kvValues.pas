@@ -13,8 +13,7 @@
 { 2018/03/04  0.09  Optimised dictionary implementation }
 { 2018/03/05  0.10  Value GetDataBuf function }
 { 2018/03/11  0.11  Decimal128 value }
-
-// todo: hugeint
+{ 2018/03/12  0.12  Value operation optimisations }
 
 {$INCLUDE kvInclude.inc}
 
@@ -2281,15 +2280,18 @@ end;
 
 function ValueOpPlus(const A, B: AkvValue): AkvValue;
 var
+  TA, TB : Integer;
   S : TkvSetValue;
   L : TkvListValue;
   D : SDecimal128;
 begin
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if A is TkvSetValue then
-    if B is TkvSetValue then
+  if TA = KV_Value_TypeId_Set then
+    if TB = KV_Value_TypeId_Set then
       begin
         S := A.Duplicate as TkvSetValue;
         S.AddSet(TkvSetValue(B));
@@ -2302,15 +2304,15 @@ begin
         Result := S;
       end
   else
-  if B is TkvSetValue then
+  if TB = KV_Value_TypeId_Set then
     begin
       S := B.Duplicate as TkvSetValue;
       S.Add(A.GetAsString);
       Result := S;
     end
   else
-  if A is TkvListValue then
-    if B is TkvListValue then
+  if TA = KV_Value_TypeId_List then
+    if TB = KV_Value_TypeId_List then
       begin
         L := A.Duplicate as TkvListValue;
         L.AddList(TkvListValue(B));
@@ -2323,7 +2325,7 @@ begin
         Result := L;
       end
   else
-  if B is TkvListValue then
+  if TB = KV_Value_TypeId_List then
     begin
       L := TkvListValue.Create;
       L.Add(A.Duplicate);
@@ -2331,25 +2333,25 @@ begin
       Result := L;
     end
   else
-  if (A is TkvDateTimeValue) or (B is TkvDateTimeValue) then
+  if (TA = KV_Value_TypeId_DateTime) or (TB = KV_Value_TypeId_DateTime) then
     Result := TkvDateTimeValue.Create(A.GetAsDateTime + B.GetAsDateTime)
   else
-  if (A is TkvBinaryValue) or (B is TkvBinaryValue) then
+  if (TA = KV_Value_TypeId_Binary) or (TB = KV_Value_TypeId_Binary) then
     Result := TkvBinaryValue.Create(kvByteArrayAppend(A.GetAsBinary, B.GetAsBinary))
   else
-  if (A is TkvStringValue) or (B is TkvStringValue) then
+  if (TA = KV_Value_TypeId_String) or (TB = KV_Value_TypeId_String) then
     Result := TkvStringValue.Create(A.GetAsString + B.GetAsString)
   else
-  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+  if (TA = KV_Value_TypeId_Decimal128) or (TB = KV_Value_TypeId_Decimal128) then
     begin
       SDecimal128InitSDecimal128(D, A.AsDecimal128);
       SDecimal128AddSDecimal128(D, B.AsDecimal128);
       Result := TkvDecimal128Value.Create(D);
     end else
-  if (A is TkvFloatValue) or (B is TkvFloatValue) then
+  if (TA = KV_Value_TypeId_Float) or (TB = KV_Value_TypeId_Float) then
     Result := TkvFloatValue.Create(A.GetAsFloat + B.GetAsFloat)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvIntegerValue.Create(A.GetAsInteger + B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot add types: %s and %s',
@@ -2358,11 +2360,14 @@ end;
 
 function ValueOpMinus(const A, B: AkvValue): AkvValue;
 var
+  TA, TB : Integer;
   S : TkvSetValue;
   D : SDecimal128;
 begin
-  if A is TkvSetValue then
-    if B is TkvSetValue then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if TA = KV_Value_TypeId_Set then
+    if TB = KV_Value_TypeId_Set then
       begin
         S := A.Duplicate as TkvSetValue;
         S.DeleteSet(TkvSetValue(B));
@@ -2375,19 +2380,19 @@ begin
         Result := S;
       end
   else
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+  if (TA = KV_Value_TypeId_Decimal128) or (TB = KV_Value_TypeId_Decimal128) then
     begin
       SDecimal128InitSDecimal128(D, A.AsDecimal128);
       SDecimal128SubtractSDecimal128(D, B.AsDecimal128);
       Result := TkvDecimal128Value.Create(D);
     end else
-  if (A is TkvFloatValue) or (B is TkvFloatValue) then
+  if (TA = KV_Value_TypeId_Float) or (TB = KV_Value_TypeId_Float) then
     Result := TkvFloatValue.Create(A.GetAsFloat - B.GetAsFloat)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvIntegerValue.Create(A.GetAsInteger - B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot subtract types: %s and %s',
@@ -2396,21 +2401,24 @@ end;
 
 function ValueOpMultiply(const A, B: AkvValue): AkvValue;
 var
+  TA, TB : Integer;
   D : SDecimal128;
 begin
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+  if (TA = KV_Value_TypeId_Decimal128) or (TB = KV_Value_TypeId_Decimal128) then
     begin
       SDecimal128InitSDecimal128(D, A.AsDecimal128);
       SDecimal128MultiplySDecimal128(D, B.AsDecimal128);
       Result := TkvDecimal128Value.Create(D);
     end else
-  if (A is TkvFloatValue) or (B is TkvFloatValue) then
+  if (TA = KV_Value_TypeId_Float) or (TB = KV_Value_TypeId_Float) then
     Result := TkvFloatValue.Create(A.GetAsFloat * B.GetAsFloat)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvIntegerValue.Create(A.GetAsInteger * B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot multiply types: %s and %s',
@@ -2419,21 +2427,24 @@ end;
 
 function ValueOpDivide(const A, B: AkvValue): AkvValue;
 var
+  TA, TB : Integer;
   D : SDecimal128;
 begin
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+  if (TA = KV_Value_TypeId_Decimal128) or (TB = KV_Value_TypeId_Decimal128) then
     begin
       SDecimal128InitSDecimal128(D, A.AsDecimal128);
       SDecimal128DivideSDecimal128(D, B.AsDecimal128);
       Result := TkvDecimal128Value.Create(D);
     end else
-  if (A is TkvFloatValue) or (B is TkvFloatValue) then
+  if (TA = KV_Value_TypeId_Float) or (TB = KV_Value_TypeId_Float) then
     Result := TkvFloatValue.Create(A.GetAsFloat / B.GetAsFloat)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvFloatValue.Create(A.GetAsInteger / B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot divide types: %s and %s',
@@ -2441,14 +2452,18 @@ begin
 end;
 
 function ValueOpOR(const A, B: AkvValue): AkvValue;
+var
+  TA, TB : Integer;
 begin
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if (A is TkvBooleanValue) or (B is TkvBooleanValue) then
+  if (TA = KV_Value_TypeId_Boolean) or (TB = KV_Value_TypeId_Boolean) then
     Result := TkvBooleanValue.Create(A.GetAsBoolean or B.GetAsBoolean)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvIntegerValue.Create(A.GetAsInteger or B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot OR types: %s and %s',
@@ -2456,14 +2471,18 @@ begin
 end;
 
 function ValueOpXOR(const A, B: AkvValue): AkvValue;
+var
+  TA, TB : Integer;
 begin
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if (A is TkvBooleanValue) or (B is TkvBooleanValue) then
+  if (TA = KV_Value_TypeId_Boolean) or (TB = KV_Value_TypeId_Boolean) then
     Result := TkvBooleanValue.Create(A.GetAsBoolean xor B.GetAsBoolean)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvIntegerValue.Create(A.GetAsInteger xor B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot XOR types: %s and %s',
@@ -2471,14 +2490,18 @@ begin
 end;
 
 function ValueOpAND(const A, B: AkvValue): AkvValue;
+var
+  TA, TB : Integer;
 begin
-  if (A is TkvNullValue) or (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) or (TB = KV_Value_TypeId_Null) then
     Result := TkvNullValue.Create
   else
-  if (A is TkvBooleanValue) or (B is TkvBooleanValue) then
+  if (TA = KV_Value_TypeId_Boolean) or (TB = KV_Value_TypeId_Boolean) then
     Result := TkvBooleanValue.Create(A.GetAsBoolean and B.GetAsBoolean)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := TkvIntegerValue.Create(A.GetAsInteger and B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot AND types: %s and %s',
@@ -2486,14 +2509,17 @@ begin
 end;
 
 function ValueOpNOT(const A: AkvValue): AkvValue;
+var
+  TA : Integer;
 begin
-  if A is TkvNullValue then
+  TA := A.TypeId;
+  if TA = KV_Value_TypeId_Null then
     Result := TkvNullValue.Create
   else
-  if A is TkvBooleanValue then
+  if TA = KV_Value_TypeId_Boolean then
     Result := TkvBooleanValue.Create(not A.GetAsBoolean)
   else
-  if A is TkvIntegerValue then
+  if TA = KV_Value_TypeId_Integer then
     Result := TkvIntegerValue.Create(not A.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot NOT type: %s', [A.ClassName]);
@@ -2533,38 +2559,42 @@ begin
 end;
 
 function ValueOpCompare(const A, B: AkvValue): Integer;
+var
+  TA, TB : Integer;
 begin
   Assert(Assigned(A));
   Assert(Assigned(B));
 
-  if (A is TkvNullValue) and (B is TkvNullValue) then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if (TA = KV_Value_TypeId_Null) and (TB = KV_Value_TypeId_Null) then
     Result := 0
   else
-  if A is TkvNullValue then
+  if TA = KV_Value_TypeId_Null then
     Result := -1
   else
-  if B is TkvNullValue then
+  if TB = KV_Value_TypeId_Null then
     Result := 1
   else
-  if (A is TkvDecimal128Value) or (B is TkvDecimal128Value) then
+  if (TA = KV_Value_TypeId_Decimal128) or (TB = KV_Value_TypeId_Decimal128) then
     Result := SDecimal128CompareSDecimal128(A.GetAsDecimal128, B.GetAsDecimal128)
   else
-  if (A is TkvBinaryValue) or (B is TkvBinaryValue) then
+  if (TA = KV_Value_TypeId_Binary) or (TB = KV_Value_TypeId_Binary) then
     Result := kvByteArrayCompare(A.GetAsBinary, B.GetAsBinary)
   else
-  if (A is TkvBooleanValue) or (B is TkvBooleanValue) then
+  if (TA = KV_Value_TypeId_Boolean) or (TB = KV_Value_TypeId_Boolean) then
     Result := CompareInt(Ord(A.GetAsBoolean), Ord(B.GetAsBoolean))
   else
-  if (A is TkvDateTimeValue) or (B is TkvDateTimeValue) then
+  if (TA = KV_Value_TypeId_DateTime) or (TB = KV_Value_TypeId_DateTime) then
     Result := CompareDateTime(A.AsDateTime, B.AsDateTime)
   else
-  if (A is TkvStringValue) or (B is TkvStringValue) then
+  if (TA = KV_Value_TypeId_String) or (TB = KV_Value_TypeId_String) then
     Result := CompareStr(A.GetAsString, B.GetAsString)
   else
-  if (A is TkvFloatValue) or (B is TkvFloatValue) then
+  if (TA = KV_Value_TypeId_Float) or (TB = KV_Value_TypeId_Float) then
     Result := CompareFloat(A.GetAsFloat, B.GetAsFloat)
   else
-  if (A is TkvIntegerValue) or (B is TkvIntegerValue) then
+  if (TA = KV_Value_TypeId_Integer) or (TB = KV_Value_TypeId_Integer) then
     Result := CompareInt(A.GetAsInteger, B.GetAsInteger)
   else
     raise EkvValue.CreateFmt('Type error: Cannot compare types: %s and %s',
@@ -2572,18 +2602,22 @@ begin
 end;
 
 function ValueOpIn(const A, B: AkvValue): Boolean;
+var
+  TA, TB : Integer;
 begin
   Assert(Assigned(A));
   Assert(Assigned(B));
 
-  if B is TkvSetValue then
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if TB = KV_Value_TypeId_Set then
     Result := TkvSetValue(B).Exists(A.GetAsString)
   else
-  if B is TkvDictionaryValue then
+  if TB = KV_Value_TypeId_Dictionary then
     Result := TkvDictionaryValue(B).Exists(A.GetAsString)
   else
-  if (B is TkvListValue) and
-     ((A is TkvIntegerValue) or (A is TkvStringValue) or (A is TkvNullValue)) then
+  if (TB = KV_Value_TypeId_List) and
+     ((TA = KV_Value_TypeId_Integer) or (TA = KV_Value_TypeId_String) or (TA = KV_Value_TypeId_Null)) then
     Result := TkvListValue(B).HasValue(A)
   else
     raise EkvValue.CreateFmt('Type error: Cannot apply in operator to types: %s and %s',
@@ -2592,28 +2626,34 @@ end;
 
 function ValueOpAppend(const A, B: AkvValue): AkvValue;
 var
+  TA, TB : Integer;
   L : TkvListValue;
   D : TkvDictionaryValue;
 begin
-  if A is TkvStringValue then
+  Assert(Assigned(A));
+  Assert(Assigned(B));
+
+  TA := A.TypeId;
+  TB := B.TypeId;
+  if TA = KV_Value_TypeId_String then
     Result := TkvStringValue.Create(A.AsString + B.AsString)
   else
-  if A is TkvBinaryValue then
+  if TA = KV_Value_TypeId_Binary then
     Result := TkvBinaryValue.Create(kvByteArrayAppend(A.GetAsBinary, B.GetAsBinary))
   else
-  if A is TkvListValue then
+  if TA = KV_Value_TypeId_List then
     begin
       L := TkvListValue(A.Duplicate);
-      if B is TkvListValue then
+      if TB = KV_Value_TypeId_List then
         L.AddList(TkvListValue(B))
       else
         L.Add(B.Duplicate);
       Result := L;
     end
   else
-  if B is TkvDictionaryValue then
+  if TB = KV_Value_TypeId_Dictionary then
     begin
-      if not (B is TkvDictionaryValue) then
+      if not (TB = KV_Value_TypeId_Dictionary) then
         raise EkvValue.CreateFmt('Type error: Cannot append types: %s and %s',
            [A.ClassName, B.ClassName]);
       D := TkvDictionaryValue(A.Duplicate);
