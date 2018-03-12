@@ -181,6 +181,16 @@ type
 
   { TkvDatasetList }
 
+  TkvDatabase = class;
+
+  TkvDatasetListIterator = record
+    Database : TkvDatabase;
+    Iterator : TkvStringHashListIterator;
+    Item     : PkvStringHashListItem;
+    Key      : String;
+    Dataset  : TkvDataset;
+  end;
+
   TkvDatasetList = class
   private
     FPath         : String;
@@ -188,13 +198,12 @@ type
     FDatabaseName : String;
 
     FFile     : TkvDatasetListFile;
-    FList     : array of TkvDataset;
     FHashList : TkvStringHashList;
 
     procedure ListClear;
     procedure ListAppend(const Item: TkvDataset);
-    function  ListGetIndexByName(const Name: String): Integer;
-    function  ListRemoveByIndex(const Index: Integer): TkvDataset;
+    function  IterateFirst(var Iterator: TkvDatasetListIterator): Boolean;
+    function  IterateNext(var Iterator: TkvDatasetListIterator): Boolean;
 
   public
     constructor Create(const Path, SystemName, DatabaseName: String);
@@ -206,7 +215,6 @@ type
     procedure Delete;
 
     function  GetCount: Integer;
-    function  GetItem(const Idx: Integer): TkvDataset;
 
     function  Exists(const Name: String): Boolean;
     function  Add(const Name: String): TkvDataset;
@@ -250,7 +258,8 @@ type
     property  DatasetList: TkvDatasetList read FDatasetList;
 
     function  GetDatasetCount: Integer;
-    function  GetDataset(const Idx: Integer): TkvDataset;
+    function  IterateFirstDataset(var Iterator: TkvDatasetListIterator): Boolean;
+    function  IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
 
     function  RequireDatasetByName(const Name: String): TkvDataset;
     function  DatasetExists(const Name: String): Boolean;
@@ -262,19 +271,23 @@ type
 
   { TkvDatabaseList }
 
+  TkvDatabaseListIterator = record
+    Iterator : TkvStringHashListIterator;
+    Item     : PkvStringHashListItem;
+    Key      : String;
+    Database : TkvDatabase;
+  end;
+
   TkvDatabaseList = class
   private
     FPath       : String;
     FSystemName : String;
 
     FFile     : TkvDatabaseListFile;
-    FList     : array of TkvDatabase;
     FHashList : TkvStringHashList;
 
     procedure ListClear;
     procedure ListAppend(const Item: TkvDatabase);
-    function  ListGetIndexByName(const Name: String): Integer;
-    function  ListRemoveByIndex(const Index: Integer): TkvDatabase;
 
   public
     constructor Create(const Path, SystemName: String);
@@ -286,7 +299,8 @@ type
     procedure Delete;
 
     function  GetCount: Integer;
-    function  GetDatabase(const Idx: Integer): TkvDatabase;
+    function  IterateFirst(var Iterator: TkvDatabaseListIterator): Boolean;
+    function  IterateNext(var Iterator: TkvDatabaseListIterator): Boolean;
 
     function  DatabaseExists(const Name: String): Boolean;
     function  AddDatabase(const Name: String): TkvDatabase;
@@ -335,7 +349,8 @@ type
     function  AllocateSystemUniqueId: UInt64;
 
     function  GetDatabaseCount: Integer;
-    function  GetDatabaseByIndex(const Idx: Integer): TkvDatabase;
+    function  IterateFirstDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
+    function  IterateNextDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
     function  DatabaseExists(const Name: String): Boolean;
     function  CreateDatabase(const Name: String): TkvDatabase;
     function  RequireDatabaseByName(const Name: String): TkvDatabase;
@@ -344,6 +359,8 @@ type
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64;
 
     function  DatasetExists(const DatabaseName, DatasetName: String): Boolean;
+    function  IterateFirstDataset(const DatabaseName: String; var Iterator: TkvDatasetListIterator): Boolean;
+    function  IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
     function  CreateDataset(const DatabaseName, DatasetName: String): TkvDataset;
     function  RequireDatasetByName(const DatabaseName, DatasetName: String): TkvDataset;
     procedure DropDataset(const DatabaseName, DatasetName: String);
@@ -1848,66 +1865,26 @@ begin
   FSystemName := SystemName;
   FDatabaseName := DatabaseName;
 
-  FHashList := TkvStringHashList.Create(False, False, False);
+  FHashList := TkvStringHashList.Create(False, False, True);
   FFile := TkvDatasetListFile.Create(Path, SystemName, DatabaseName);
 end;
 
 destructor TkvDatasetList.Destroy;
-var
-  I : Integer;
 begin
   FreeAndNil(FFile);
   FreeAndNil(FHashList);
-  for I := Length(FList) - 1 downto 0 do
-    FreeAndNil(FList[I]);
   inherited Destroy;
 end;
 
 procedure TkvDatasetList.ListClear;
-var
-  I : Integer;
 begin
-  for I := Length(FList) - 1 downto 0 do
-    FreeAndNil(FList[I]);
-  SetLength(FList, 0);
   FHashList.Clear;
 end;
 
 procedure TkvDatasetList.ListAppend(const Item: TkvDataset);
-var
-  L : Integer;
 begin
   Assert(Assigned(Item));
-
-  L := Length(FList);
-  SetLength(FList, L + 1);
-  FList[L] := Item;
-
   FHashList.Add(Item.Name, Item);
-end;
-
-function TkvDatasetList.ListGetIndexByName(const Name: String): Integer;
-var
-  I : Integer;
-begin
-  for I := 0 to Length(FList) - 1 do
-    if SameText(FList[I].Name, Name) then
-      begin
-        Result := I;
-        exit;
-      end;
-  Result := -1;
-end;
-
-function TkvDatasetList.ListRemoveByIndex(const Index: Integer): TkvDataset;
-var
-  I, L : Integer;
-begin
-  L := Length(FList);
-  Result := FList[Index];
-  for I := Index to L - 2 do
-    FList[I] := FList[I + 1];
-  SetLength(FList, L - 1);
 end;
 
 procedure TkvDatasetList.OpenNew;
@@ -1937,33 +1914,57 @@ end;
 
 procedure TkvDatasetList.Close;
 var
-  I : Integer;
+  It : TkvDatasetListIterator;
 begin
-  for I := 0 to Length(FList) - 1 do
-    FList[I].Close;
+  if IterateFirst(It) then
+    repeat
+      It.Dataset.Close;
+    until not IterateNext(It);
   FFile.Close;
 end;
 
 procedure TkvDatasetList.Delete;
 var
-  I : Integer;
+  It : TkvDatasetListIterator;
 begin
-  for I := 0 to Length(FList) - 1 do
-    FList[I].Delete;
+  if IterateFirst(It) then
+    repeat
+      It.Dataset.Delete;
+    until not IterateNext(It);
   FFile.Delete;
 end;
 
 function TkvDatasetList.GetCount: Integer;
 begin
-  Result := Length(FList);
+  Result := FHashList.Count;
 end;
 
-function TkvDatasetList.GetItem(const Idx: Integer): TkvDataset;
+function TkvDatasetList.IterateFirst(var Iterator: TkvDatasetListIterator): Boolean;
+var
+  R : Boolean;
 begin
-  Assert(Idx >= 0);
-  Assert(Idx < Length(FList));
+  Iterator.Item := FHashList.IterateFirst(Iterator.Iterator);
+  R := Assigned(Iterator.Item);
+  if R then
+    begin
+      Iterator.Key := Iterator.Item.Key;
+      Iterator.Dataset := TkvDataset(Iterator.Item.Value);
+    end;
+  Result := R;
+end;
 
-  Result := FList[Idx];
+function TkvDatasetList.IterateNext(var Iterator: TkvDatasetListIterator): Boolean;
+var
+  R : Boolean;
+begin
+  Iterator.Item := FHashList.IterateNext(Iterator.Iterator);
+  R := Assigned(Iterator.Item);
+  if R then
+    begin
+      Iterator.Key := Iterator.Item.Key;
+      Iterator.Dataset := TkvDataset(Iterator.Item.Value);
+    end;
+  Result := R;
 end;
 
 function TkvDatasetList.Exists(const Name: String): Boolean;
@@ -1991,19 +1992,17 @@ end;
 
 procedure TkvDatasetList.Remove(const Name: String);
 var
-  I : Integer;
+  DsO : TObject;
   Ds : TkvDataset;
 begin
   Assert(Assigned(FFile));
 
-  I := ListGetIndexByName(Name);
-  if I < 0 then
+  if not FHashList.GetValue(Name, DsO) then
     raise EkvObject.CreateFmt('Dataset not found: %s', [Name]);
-  FHashList.DeleteKey(Name);
-  Ds := ListRemoveByIndex(I);
+  Ds := TkvDataset(DsO);
   Include(Ds.FDatasetListRec.Flags, dslfrfDeleted);
   FFile.SaveRecord(Ds.FDatasetListIdx, Ds.FDatasetListRec);
-  Ds.Free;
+  FHashList.DeleteKey(Name);
 end;
 
 procedure TkvDatasetList.SaveDataset(const Dataset: TkvDataset);
@@ -2076,9 +2075,15 @@ begin
   Result := FDatasetList.GetCount;
 end;
 
-function TkvDatabase.GetDataset(const Idx: Integer): TkvDataset;
+function TkvDatabase.IterateFirstDataset(var Iterator: TkvDatasetListIterator): Boolean;
 begin
-  Result := FDatasetList.GetItem(Idx);
+  Iterator.Database := self;
+  Result := FDatasetList.IterateFirst(Iterator);
+end;
+
+function TkvDatabase.IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
+begin
+  Result := FDatasetList.IterateNext(Iterator);
 end;
 
 function TkvDatabase.RequireDatasetByName(const Name: String): TkvDataset;
@@ -2116,66 +2121,26 @@ begin
   FPath := Path;
   FSystemName := SystemName;
 
-  FHashList := TkvStringHashList.Create(False, False, False);
+  FHashList := TkvStringHashList.Create(False, False, True);
   FFile := TkvDatabaseListFile.Create(Path, SystemName);
 end;
 
 destructor TkvDatabaseList.Destroy;
-var
-  I : Integer;
 begin
   FreeAndNil(FFile);
   FreeAndNil(FHashList);
-  for I := Length(FList) - 1 downto 0 do
-    FreeAndNil(FList[I]);
   inherited Destroy;
 end;
 
 procedure TkvDatabaseList.ListClear;
-var
-  I : Integer;
 begin
-  for I := Length(FList) - 1 downto 0 do
-    FreeAndNil(FList[I]);
-  SetLength(FList, 0);
   FHashList.Clear;
 end;
 
 procedure TkvDatabaseList.ListAppend(const Item: TkvDatabase);
-var
-  L : Integer;
 begin
   Assert(Assigned(Item));
-
-  L := Length(FList);
-  SetLength(FList, L + 1);
-  FList[L] := Item;
-
   FHashList.Add(Item.Name, Item);
-end;
-
-function TkvDatabaseList.ListGetIndexByName(const Name: String): Integer;
-var
-  I : Integer;
-begin
-  for I := 0 to Length(FList) - 1 do
-    if SameText(FList[I].Name, Name) then
-      begin
-        Result := I;
-        exit;
-      end;
-  Result := -1;
-end;
-
-function TkvDatabaseList.ListRemoveByIndex(const Index: Integer): TkvDatabase;
-var
-  I, L : Integer;
-begin
-  L := Length(FList);
-  Result := FList[Index];
-  for I := Index to L - 2 do
-    FList[I] := FList[I + 1];
-  SetLength(FList, L - 1);
 end;
 
 procedure TkvDatabaseList.OpenNew;
@@ -2205,33 +2170,57 @@ end;
 
 procedure TkvDatabaseList.Close;
 var
-  I : Integer;
+  It : TkvDatabaseListIterator;
 begin
-  for I := 0 to Length(FList) - 1 do
-    FList[I].Close;
+  if IterateFirst(It) then
+    repeat
+      It.Database.Close;
+    until not IterateNext(It);
   FFile.Close;
 end;
 
 procedure TkvDatabaseList.Delete;
 var
-  I : Integer;
+  It : TkvDatabaseListIterator;
 begin
-  for I := 0 to Length(FList) - 1 do
-    FList[I].Delete;
+  if IterateFirst(It) then
+    repeat
+      It.Database.Delete;
+    until not IterateNext(It);
   FFile.Delete;
 end;
 
 function TkvDatabaseList.GetCount: Integer;
 begin
-  Result := Length(FList);
+  Result := FHashList.Count;
 end;
 
-function TkvDatabaseList.GetDatabase(const Idx: Integer): TkvDatabase;
+function TkvDatabaseList.IterateFirst(var Iterator: TkvDatabaseListIterator): Boolean;
+var
+  R : Boolean;
 begin
-  Assert(Idx >= 0);
-  Assert(Idx < Length(FList));
+  Iterator.Item := FHashList.IterateFirst(Iterator.Iterator);
+  R := Assigned(Iterator.Item);
+  if R then
+    begin
+      Iterator.Key := Iterator.Item.Key;
+      Iterator.Database := TkvDatabase(Iterator.Item.Value);
+    end;
+  Result := R;
+end;
 
-  Result := FList[Idx];
+function TkvDatabaseList.IterateNext(var Iterator: TkvDatabaseListIterator): Boolean;
+var
+  R : Boolean;
+begin
+  Iterator.Item := FHashList.IterateNext(Iterator.Iterator);
+  R := Assigned(Iterator.Item);
+  if R then
+    begin
+      Iterator.Key := Iterator.Item.Key;
+      Iterator.Database := TkvDatabase(Iterator.Item.Value);
+    end;
+  Result := R;
 end;
 
 function TkvDatabaseList.DatabaseExists(const Name: String): Boolean;
@@ -2280,19 +2269,17 @@ end;
 
 procedure TkvDatabaseList.Remove(const Name: String);
 var
-  I : Integer;
+  DbO : TObject;
   Db : TkvDatabase;
 begin
   Assert(Assigned(FFile));
 
-  I := ListGetIndexByName(Name);
-  if I < 0 then
+  if not FHashList.GetValue(Name, DbO) then
     raise EkvObject.CreateFmt('Database not found: %s', [Name]);
-  FHashList.DeleteKey(Name);
-  Db := ListRemoveByIndex(I);
+  Db := TkvDatabase(DbO);
   Include(Db.FDatabaseListRec.Flags, dblfrfDeleted);
   FFile.SaveRecord(Db.FDatabaseListIdx, Db.FDatabaseListRec);
-  Db.Free;
+  FHashList.DeleteKey(Name);
 end;
 
 
@@ -2400,12 +2387,14 @@ begin
   Result := FDatabaseList.GetCount;
 end;
 
-function TkvSystem.GetDatabaseByIndex(const Idx: Integer): TkvDatabase;
+function TkvSystem.IterateFirstDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
 begin
-  if (Idx < 0) or (Idx >= FDatabaseList.GetCount) then
-    raise EkvObject.Create('Invalid database index');
+  Result := FDatabaseList.IterateFirst(Iterator);
+end;
 
-  Result := FDatabaseList.GetDatabase(Idx);
+function TkvSystem.IterateNextDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
+begin
+  Result := FDatabaseList.IterateNext(Iterator);
 end;
 
 function TkvSystem.DatabaseExists(const Name: String): Boolean;
@@ -2468,6 +2457,23 @@ begin
 
   Db := RequireDatabaseByName(DatabaseName);
   Result := Db.DatasetExists(DatasetName);
+end;
+
+function TkvSystem.IterateFirstDataset(const DatabaseName: String; var Iterator: TkvDatasetListIterator): Boolean;
+var
+  Db : TkvDatabase;
+begin
+  if DatabaseName = '' then
+    raise EkvObject.Create('Database name required');
+
+  Db := RequireDatabaseByName(DatabaseName);
+  Result := Db.IterateFirstDataset(Iterator);
+end;
+
+function TkvSystem.IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
+begin
+  Assert(Assigned(Iterator.Database));
+  Result := Iterator.Database.IterateNextDataset(Iterator);
 end;
 
 function TkvSystem.CreateDataset(const DatabaseName, DatasetName: String): TkvDataset;

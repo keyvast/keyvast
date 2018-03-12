@@ -978,13 +978,21 @@ function TkvScriptSystem.ListOfDatabases(const Session: TkvSession): TkvKeyNameA
 var
   L, I : Integer;
   R : TkvKeyNameArray;
+  ItR : Boolean;
+  It : TkvDatabaseListIterator;
 begin
   FExecLock.Acquire;
   try
     L := FSystem.GetDatabaseCount;
     SetLength(R, L);
-    for I := 0 to L - 1 do
-      R[I] := FSystem.GetDatabaseByIndex(I).Name;
+    I := 0;
+    ItR := FSystem.IterateFirstDatabase(It);
+    while ItR and (I < L) do
+      begin
+        R[I] := It.Key;
+        ItR := FSystem.IterateNextDatabase(It);
+        Inc(I);
+      end;
   finally
     FExecLock.Release;
   end;
@@ -1029,6 +1037,8 @@ function TkvScriptSystem.ListOfDatasets(const Session: TkvSession;
 var
   Db : TkvDatabase;
   L, I : Integer;
+  ItR : Boolean;
+  It : TkvDatasetListIterator;
   R : TkvKeyNameArray;
 begin
   FExecLock.Acquire;
@@ -1036,8 +1046,14 @@ begin
     Db := FSystem.RequireDatabaseByName(DatabaseName);
     L := Db.GetDatasetCount;
     SetLength(R, L);
-    for I := 0 to L - 1 do
-      R[I] := Db.GetDataset(I).Name;
+    I := 0;
+    ItR := FSystem.IterateFirstDataset(DatabaseName, It);
+    while ItR and (I < L) do
+      begin
+        R[I] := It.Key;
+        ItR := FSystem.IterateNextDataset(It);
+        Inc(I);
+      end;
   finally
     FExecLock.Release;
   end;

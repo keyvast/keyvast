@@ -195,7 +195,7 @@ type
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName: String;
                 const CacheEntries: Integer =
-                    0);
+                    KV_HashFile_LevelSlotCount * KV_HashFile_LevelSlotCount);
     destructor Destroy; override;
 
     procedure OpenNew;
