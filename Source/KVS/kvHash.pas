@@ -94,8 +94,8 @@ begin
       H1 := Word32(H shr 32);
       H2 := Word32(H and $FFFFFFFF);
 
-      H1 := Word32(H1 + Word32(I) + Word32(D));
-      H2 := Word32(H2 + Word32(I) + Word32(L));
+      H1 := Word32(UInt64(H1) + Word32(I) + Word32(D));
+      H2 := Word32(UInt64(H2) + Word32(I) + Word32(L));
 
       H1 := Word32(UInt64(H1) * 73 + 1);
       H2 := Word32(UInt64(H2) * 5 + 79);
