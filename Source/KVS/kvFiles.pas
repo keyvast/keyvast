@@ -9,8 +9,7 @@
 { 2018/02/10  0.04  Blob file }
 { 2018/02/18  0.05  Hash file cache }
 { 2018/03/05  0.06  Blob file append chain }
-
-// Todo: Pack files
+{ 2018/03/14  0.07  Blob file truncate }
 
 {$INCLUDE kvInclude.inc}
 
@@ -268,6 +267,7 @@ type
     function  GetChainSize(const RecordIndex: Word32): Integer;
     procedure AppendChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
     procedure WriteChainStart(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+    procedure TruncateChainAt(const RecordIndex: Word32; const Size: Integer);
   end;
 
 
@@ -1533,6 +1533,23 @@ begin
     raise EkvFile.Create('Invalid buffer size: Larger than chain size');
 
   FFile.WriteBuffer(Buf, BufSize);
+end;
+
+procedure TkvBlobFile.TruncateChainAt(const RecordIndex: Word32; const Size: Integer);
+var
+  RecHdr : TkvBlobFileRecordHeader;
+begin
+  Assert(Assigned(FFile));
+  Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
+  if Size < 0 then
+    raise EkvFile.Create('Invalid chain size');
+
+  LoadRecordHeader(RecordIndex, RecHdr);
+  if Word32(Size) > RecHdr.ChainSize then
+    raise EkvFile.Create('Invalid size: Larger than chain size');
+
+  RecHdr.ChainSize := Size;
+  SaveRecordHeader(RecordIndex, RecHdr);
 end;
 
 

@@ -32,7 +32,6 @@ uses
   kvScriptNodes in '..\KVS\kvScriptNodes.pas',
   kvScriptParser in '..\KVS\kvScriptParser.pas',
   kvScriptSystem in '..\KVS\kvScriptSystem.pas',
-  kvTest in '..\KVS\kvTest.pas',
   kvScriptFunctions in '..\KVS\kvScriptFunctions.pas',
   flcDecimal in '..\Fundamentals\flcDecimal.pas',
   flcInteger in '..\Fundamentals\flcInteger.pas';
@@ -105,7 +104,7 @@ end;
 
 procedure PrintTitle;
 begin
-  Writeln('KeyVast Local Admin 1.30');
+  Writeln('KeyVast Local Admin 1.40');
 end;
 
 procedure PrintHelp;
@@ -200,7 +199,6 @@ begin
   {$IFDEF TEST}
   flcInteger.Test;
   flcDecimal.Test;
-  kvTest.Test;
   {$ENDIF}
   {$ENDIF}
   try

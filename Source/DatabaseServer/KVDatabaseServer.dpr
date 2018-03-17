@@ -43,7 +43,9 @@ uses
   kvdsApplication in 'kvdsApplication.pas',
   kvScriptFunctions in '..\KVS\kvScriptFunctions.pas',
   flcDecimal in '..\Fundamentals\flcDecimal.pas',
-  flcInteger in '..\Fundamentals\flcInteger.pas';
+  flcInteger in '..\Fundamentals\flcInteger.pas',
+  kvDatasysClient in '..\KVS\kvDatasysClient.pas',
+  kvDatasysServer in '..\KVS\kvDatasysServer.pas';
 
 type
   EAppError = class(Exception);
@@ -168,7 +170,7 @@ end;
 
 procedure PrintTitle;
 begin
-  Writeln('KeyVast Database Server 1.30');
+  Writeln('KeyVast Database Server 1.40');
 end;
 
 procedure PrintHelp;

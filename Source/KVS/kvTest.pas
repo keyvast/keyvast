@@ -15,6 +15,7 @@ implementation
 {$IFDEF DEBUG}
 {$IFDEF TEST}
 {$DEFINE Profile}
+{$ASSERTIONS ON}
 {$ENDIF}
 {$ENDIF}
 
@@ -36,7 +37,9 @@ uses
   kvObjects,
   kvScriptNodes,
   kvScriptParser,
-  kvScriptSystem;
+  kvScriptSystem,
+  kvDatasysServer,
+  kvDatasysClient;
 
 function BasePath: String;
 begin
@@ -707,7 +710,7 @@ begin
   DeleteFile(BasePath + 'testsys.TESTDB.testds.v.kvbl');
 end;
 
-procedure Check_Script_Result(const Ses: TkvSession; const N: AkvScriptNode; const ValS: String);
+procedure Check_Script_Result(const Ses: TkvScriptSession; const N: AkvScriptNode; const ValS: String);
 var
   V : AkvValue;
 begin
@@ -745,7 +748,7 @@ var
   P : TkvScriptParser;
   Sys : TkvSystem;
   MSys : TkvScriptSystem;
-  Ses : TkvSession;
+  Ses : TkvScriptSession;
 
   procedure Exec(const S: String; const ValS: String = '');
   var
@@ -915,7 +918,7 @@ var
   P : TkvScriptParser;
   Sys : TkvSystem;
   MSys : TkvScriptSystem;
-  Ses : TkvSession;
+  Ses : TkvScriptSession;
 
   procedure Exec(const S: String; const ValS: String = '');
   var
@@ -1357,7 +1360,7 @@ var
   P : TkvScriptParser;
   Sys : TkvSystem;
   MSys : TkvScriptSystem;
-  Ses : TkvSession;
+  Ses : TkvScriptSession;
 
   procedure Exec(const S: String; const ValS: String = '');
   var
@@ -1527,6 +1530,134 @@ begin
   end;
 end;
 
+procedure Test_Datasys;
+var
+  Sys : TkvSystem;
+  MSys : TkvScriptSystem;
+  Server : TkvDatasysServer;
+  Client : TkvDatasysClient;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    R : String;
+  begin
+    R := Client.ExecTextCommand(S);
+    Assert(R = ValS);
+  end;
+
+  procedure ExecBinKql(const S: String; const ValS: String = '');
+  var
+    Res : AkvValue;
+  begin
+    Res := Client.ExecKqlText(S);
+    if not Assigned(Res) then
+      Assert(ValS = '')
+    else
+      Assert(Res.AsString = ValS);
+  end;
+
+var
+  ValA : AkvValue;
+  ValI : TkvIntegerValue;
+
+begin
+  Delete_Script_Database;
+  Sys := TkvSystem.Create(BasePath, 'testsys');
+  MSys := TkvScriptSystem.Create(Sys);
+  try
+    MSys.OpenNew;
+
+    Server := TkvDatasysServer.Create(7001);
+    try
+      Server.Start(MSys);
+
+      Client := TkvDatasysClient.Create;
+      try
+        Client.Host := '127.0.0.1';
+        Client.Port := 7001;
+        Client.Start;
+
+        Exec('EVAL 1', '$val:1');
+        Exec('EVAL 1+1', '$val:2');
+
+        Exec('CREATE DATABASE TESTDB', '$nil');
+        Exec('CREATE DATASET TESTDB:testds', '$nil');
+        Exec('USE TESTDB:testds', '$nil');
+
+        Exec('INSERT 1 1', '$nil');
+        Exec('SELECT 1', '$val:1');
+
+        ExecBinKql('INSERT 2 2', '');
+        ExecBinKql('SELECT 2', '2');
+        ExecBinKql('INSERT 3 3', '');
+        ExecBinKql('SELECT 3', '3');
+
+        Assert(not Client.Exists('TESTDB', 'testds', '4'));
+        ValI := TkvIntegerValue.Create(4);
+        Client.Insert('TESTDB', 'testds', '4', ValI);
+        ValA := Client.Select('TESTDB', 'testds', '4');
+        Assert(ValA.AsInteger = 4);
+        ValA.Free;
+        Assert(Client.Exists('TESTDB', 'testds', '4'));
+        ValI.Value := 5;
+        Client.Update('TESTDB', 'testds', '4', ValI);
+        ValA := Client.Select('TESTDB', 'testds', '4');
+        Assert(ValA.AsInteger = 5);
+        ValA.Free;
+        ValI.Free;
+
+        Exec('exit', '$bye');
+
+        Client.Stop;
+      finally
+        Client.Free;
+      end;
+
+      Client := TkvDatasysClient.Create;
+      try
+        Client.Host := '127.0.0.1';
+        Client.Port := 7001;
+        Client.Start;
+
+        Exec('USE TESTDB:testds', '$nil');
+
+        Exec('SELECT 1', '$val:1');
+
+        ExecBinKql('SELECT 2', '2');
+        ExecBinKql('SELECT 3', '3');
+
+        ValA := Client.Select('TESTDB', 'testds', '4');
+        Assert(ValA.AsInteger = 5);
+        ValA.Free;
+
+        Client.UseDataset('TESTDB', 'testds');
+        ValA := Client.Select('', '', '4');
+        Assert(ValA.AsInteger = 5);
+        ValA.Free;
+
+        Client.Delete('TESTDB', 'testds', '4');
+        Assert(not Client.Exists('TESTDB', 'testds', '4'));
+
+        Exec('DROP DATASET TESTDB:testds', '$nil');
+        Exec('DROP DATABASE TESTDB', '$nil');
+
+        Exec('exit', '$bye');
+
+        Client.Stop;
+      finally
+        Client.Free;
+      end;
+
+      Server.Stop;
+    finally
+      Server.Free;
+    end;
+  finally
+    MSys.Free;
+    Sys.Free;
+  end;
+end;
+
 procedure Test;
 begin
   Test_HashListHashString;
@@ -1540,6 +1671,7 @@ begin
   Test_Script_Expressions;
   Test_Script_Database;
   Test_Script_Folders;
+  Test_Datasys;
 end;
 
 end.

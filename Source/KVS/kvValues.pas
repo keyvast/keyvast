@@ -289,7 +289,9 @@ type
     procedure AddFloat(const Key: String; const Value: Double);
     procedure AddInteger(const Key: String; const Value: Int64);
     procedure AddDateTime(const Key: String; const Value: TDateTime);
+    procedure AddNull(const Key: String);
     function  Exists(const Key: String): Boolean;
+    function  IsValueNull(const Key: String): Boolean;
     function  GetValue(const Key: String): AkvValue;
     function  GetValueAsString(const Key: String): String;
     function  GetValueAsBoolean(const Key: String): Boolean;
@@ -298,9 +300,12 @@ type
     function  GetValueAsDateTime(const Key: String): TDateTime;
     procedure SetValue(const Key: String; const Value: AkvValue);
     procedure SetValueString(const Key: String; const Value: String);
+    procedure SetValueBoolean(const Key: String; const Value: Boolean);
     procedure SetValueInteger(const Key: String; const Value: Int64);
     procedure SetValueDateTime(const Key: String; const Value: TDateTime);
+    procedure SetValueNull(const Key: String);
     procedure DeleteKey(const Key: String);
+    function  ReleaseKey(const Key: String): TObject;
     function  IterateFirst(out Iterator: TkvDictionaryValueIterator): Boolean;
     function  IterateNext(out Iterator: TkvDictionaryValueIterator): Boolean;
     procedure IteratorGetKeyValue(const Iterator: TkvDictionaryValueIterator;
@@ -1821,9 +1826,23 @@ begin
   Add(Key, TkvDateTimeValue.Create(Value));
 end;
 
+procedure TkvDictionaryValue.AddNull(const Key: String);
+begin
+  Add(Key, TkvNullValue.Create);
+end;
+
 function TkvDictionaryValue.Exists(const Key: String): Boolean;
 begin
   Result := FValue.KeyExists(Key);
+end;
+
+function TkvDictionaryValue.IsValueNull(const Key: String): Boolean;
+var
+  V : TObject;
+begin
+  if not FValue.GetValue(Key, V) then
+    raise EkvValue.CreateFmt('Dictionary key not found: %s', [Key]);
+  Result := AkvValue(V) is TkvNullValue;
 end;
 
 function TkvDictionaryValue.GetValue(const Key: String): AkvValue;
@@ -1871,6 +1890,11 @@ begin
   SetValue(Key, TkvStringValue.Create(Value));
 end;
 
+procedure TkvDictionaryValue.SetValueBoolean(const Key: String; const Value: Boolean);
+begin
+  SetValue(Key, TkvBooleanValue.Create(Value));
+end;
+
 procedure TkvDictionaryValue.SetValueInteger(const Key: String; const Value: Int64);
 begin
   SetValue(Key, TkvIntegerValue.Create(Value));
@@ -1881,9 +1905,19 @@ begin
   SetValue(Key, TkvDateTimeValue.Create(Value));
 end;
 
+procedure TkvDictionaryValue.SetValueNull(const Key: String);
+begin
+  SetValue(Key, TkvNullValue.Create);
+end;
+
 procedure TkvDictionaryValue.DeleteKey(const Key: String);
 begin
   FValue.DeleteKey(Key);
+end;
+
+function TkvDictionaryValue.ReleaseKey(const Key: String): TObject;
+begin
+  FValue.RemoveKey(Key, Result);
 end;
 
 function TkvDictionaryValue.IterateFirst(out Iterator: TkvDictionaryValueIterator): Boolean;

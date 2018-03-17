@@ -1,0 +1,496 @@
+{ KeyVast - A key value store }
+{ Copyright (c) 2018 KeyVast, David J Butler }
+{ KeyVast is released under the terms of the MIT license. }
+
+{ 2018/03/16  0.01  Initial development, binary protocol }
+
+{$INCLUDE kvInclude.inc}
+
+unit kvDatasysServer;
+
+interface
+
+uses
+  SysUtils,
+  SyncObjs,
+  kvValues,
+  kvObjects,
+  kvScriptParser,
+  kvScriptSystem,
+  IdGlobal,
+  IdContext,
+  IdIOHandler,
+  IdTCPServer;
+
+
+
+type
+  EkvDatasysServer = class(Exception);
+
+  TkvDatasysServer = class;
+
+  TkvDatasysServerLogEvent = procedure (LogType: Char; LogMsg: String;
+      LogLevel: Integer) of object;
+
+  TkvDatasysServerEvent = procedure (Server: TkvDatasysServer) of object;
+
+  TkvDatasysServerCommandEvent = procedure (Server: TkvDatasysServer; const CmdText: String) of object;
+
+  TkvDatasysServerResponseEvent = procedure (Server: TkvDatasysServer; const RespText: String) of object;
+
+  TkvDatasysServer = class
+  private
+    FTcpPort        : Integer;
+    FOnLog          : TkvDatasysServerLogEvent;
+    FOnTextCommand  : TkvDatasysServerCommandEvent;
+    FOnTextResponse : TkvDatasysServerResponseEvent;
+    FOnStopCommand  : TkvDatasysServerEvent;
+
+    FTcpServer : TIdTCPServer;
+    FSys       : TkvScriptSystem;
+
+    procedure Log(const LogType: Char; const LogMsg: String;
+              const LogLevel: Integer = 0); overload;
+    procedure Log(const LogType: Char; const LogMsg: String;
+              const Args: array of const; const LogLevel: Integer = 0); overload;
+
+    procedure TcpServerConnect(AContext: TIdContext);
+    procedure TcpServerDisconnect(AContext: TIdContext);
+    procedure TcpServerExecute(AContext: TIdContext);
+
+    procedure ClientTextCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession; const CmdTxt: String);
+    procedure ClientBinCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession; const BinBuf; const BinBufSize: Integer);
+    procedure ClientBinDictCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession; const RequestType: String;
+              const RequestDict: TkvDictionaryValue);
+    procedure ClientBinKeyCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
+    procedure ClientBinUseCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
+
+  public
+    constructor Create(const DefaultPort: Integer);
+    destructor Destroy; override;
+
+    property  TcpPort: Integer read FTcpPort write FTcpPort;
+    property  OnLog: TkvDatasysServerLogEvent read FOnLog write FOnLog;
+    property  OnTextCommand: TkvDatasysServerCommandEvent read FOnTextCommand write FOnTextCommand;
+    property  OnTextResponse: TkvDatasysServerResponseEvent read FOnTextResponse write FOnTextResponse;
+    property  OnStopCommand: TkvDatasysServerEvent read FOnStopCommand write FOnStopCommand;
+
+    procedure Start(const Sys: TkvScriptSystem);
+    procedure Stop;
+  end;
+
+
+
+implementation
+
+
+
+const
+  WideCRLF = WideChar(#13) + WideChar(#10);
+
+
+
+constructor TkvDatasysServer.Create(const DefaultPort: Integer);
+begin
+  Assert(DefaultPort > 0);
+  inherited Create;
+  FTcpPort := DefaultPort;
+  FTcpServer := TIdTCPServer.Create(nil);
+end;
+
+destructor TkvDatasysServer.Destroy;
+begin
+  FreeAndNil(FTcpServer);
+  inherited Destroy;
+end;
+
+procedure TkvDatasysServer.Log(const LogType: Char; const LogMsg: String;
+          const LogLevel: Integer);
+begin
+  if Assigned(FOnLog) then
+    FOnLog(LogType, LogMsg, LogLevel);
+end;
+
+procedure TkvDatasysServer.Log(const LogType: Char; const LogMsg: String;
+          const Args: array of const; const LogLevel: Integer);
+begin
+  Log(LogType, Format(LogMsg, Args), LogLevel);
+end;
+
+procedure TkvDatasysServer.Start(const Sys: TkvScriptSystem);
+var
+  P : Integer;
+begin
+  try
+    Assert(Assigned(Sys));
+    FSys := Sys;
+
+    if (FTcpPort <= 0) or (FTcpPort >= $FFFF) then
+      raise EkvDatasysServer.Create('Invalid TCP port');
+    P := FTcpPort;
+    Log('#', 'Starting TCP server on port %d', [P]);
+
+    FTcpServer.OnConnect := TcpServerConnect;
+    FTcpServer.OnDisconnect := TcpServerDisconnect;
+    FTcpServer.OnExecute := TcpServerExecute;
+    FTcpServer.DefaultPort := P;
+    FTcpServer.Active := True;
+  except
+    on E : Exception do
+      begin
+        Log('!', 'Start error: %s', [E.Message]);
+        raise;
+      end;
+  end;
+  Log('#', 'Started');
+end;
+
+procedure TkvDatasysServer.Stop;
+begin
+  Log('#', 'Stopping');
+  FTcpServer.Active := False;
+  Log('#', 'Stopped');
+end;
+
+procedure TkvDatasysServer.TcpServerConnect(AContext: TIdContext);
+var
+  Ses : TkvScriptSession;
+begin
+  Ses := FSys.AddSession;
+
+  {$IFDEF IdContextUseDataObject}
+  AContext.DataObject := Ses;
+  {$ELSE}
+  AContext.Data := Ses;
+  {$ENDIF}
+
+  Log('#', 'Session added: %s', [AContext.Connection.Socket.Binding.PeerIP]);
+end;
+
+procedure TkvDatasysServer.TcpServerDisconnect(AContext: TIdContext);
+var
+  DaOb : TObject;
+  Ses : TkvScriptSession;
+begin
+  {$IFDEF IdContextUseDataObject}
+  DaOb := AContext.DataObject;
+  AContext.DataObject := nil;
+  {$ELSE}
+  DaOb := AContext.Data;
+  AContext.Data := nil;
+  {$ENDIF}
+  if not Assigned(DaOb) then
+    exit;
+  Assert(DaOb is TkvScriptSession);
+  Ses := TkvScriptSession(DaOb);
+
+  Log('#', 'Session removed: %s', [AContext.Connection.Socket.Binding.PeerIP]);
+
+  Ses.Close;
+end;
+
+procedure TkvDatasysServer.TcpServerExecute(AContext: TIdContext);
+var
+  IOHandler : TIdIOHandler;
+  CmdS : String;
+  DaOb : TObject;
+  Ses : TkvScriptSession;
+  BinSize : UInt32;
+  BinBuf : TIdBytes;
+begin
+  IOHandler := AContext.Connection.IOHandler;
+  CmdS := IOHandler.ReadLn(#13#10, -1, 65536, IndyTextEncoding_UTF8);
+
+  {$IFDEF IdContextUseDataObject}
+  DaOb := AContext.DataObject;
+  {$ELSE}
+  DaOb := AContext.Data;
+  {$ENDIF}
+  if not Assigned(DaOb) then
+    exit;
+  Assert(DaOb is TkvScriptSession);
+  Ses := TkvScriptSession(DaOb);
+
+  if CmdS = 'bin' then
+    begin
+      BinSize := IOHandler.ReadUInt32(False);
+      SetLength(BinBuf, BinSize);
+      if BinSize > 0 then
+        begin
+          IOHandler.ReadBytes(BinBuf, BinSize, False);
+          ClientBinCommand(AContext, Ses, BinBuf[0], BinSize);
+        end;
+      if IOHandler.ReadUInt16(False) <> $0A0D then
+        AContext.Connection.Socket.Close;
+    end
+  else
+    ClientTextCommand(AContext, Ses, CmdS);
+end;
+
+function kvCommandClean(const CmdTxt: String): String;
+var
+  R : Boolean;
+  S : String;
+  I : Integer;
+begin
+  R := False;
+  S := CmdTxt;
+  repeat
+    I := S.IndexOf(#8);
+    if I > 0 then
+      S := S.Remove(I - 1, 2)
+    else
+    if I = 0 then
+      S := S.Remove(0, 1)
+    else
+      R := True;
+  until R;
+  S := S.Trim;
+  Result := S;
+end;
+
+procedure TkvDatasysServer.ClientTextCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const CmdTxt: String);
+var
+  CmdS : String;
+  V : TObject;
+  RespMsg : String;
+  Resp : String;
+  CloseCon : Boolean;
+begin
+  CloseCon := False;
+
+  CmdS := kvCommandClean(CmdTxt);
+
+  if Assigned(FOnTextCommand) then
+    FOnTextCommand(self, CmdS);
+
+  if CmdS = '' then
+    RespMsg := '$nil'
+  else
+  if SameText(CmdS, 'exit') then
+    begin
+      RespMsg := '$bye';
+      CloseCon := True;
+    end
+  else
+  if SameText(CmdS, 'stop') then
+    begin
+      RespMsg := '$shuttingdown';
+      CloseCon := True;
+      if Assigned(FOnStopCommand) then
+        FOnStopCommand(self);
+    end
+  else
+    try
+      V := Session.ExecScript(CmdS);
+      if not Assigned(V) then
+        RespMsg := '$nil'
+      else
+      if V is AkvValue then
+        RespMsg := '$val:' + AkvValue(V).AsScript
+      else
+        RespMsg := '$unknownvaluetype';
+    except
+      on E : Exception do
+        RespMsg := '$error:' + E.ClassName + ':' + E.Message;
+    end;
+
+  if Assigned(FOnTextResponse) then
+    FOnTextResponse(self, RespMsg);
+
+  Resp := RespMsg + WideCRLF;
+  AContext.Connection.Socket.Write(Resp, IndyTextEncoding_UTF8);
+
+  if CloseCon then
+    AContext.Connection.Socket.CloseGracefully;
+end;
+
+procedure TkvDatasysServer.ClientBinCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const BinBuf; const BinBufSize: Integer);
+var
+  ReqDict : TkvDictionaryValue;
+  ReqType : String;
+begin
+  ReqDict := TkvDictionaryValue.Create;
+  try
+    try
+      Assert(BinBufSize > 0);
+      ReqDict.PutSerialBuf(BinBuf, BinBufSize);
+      ReqType := ReqDict.GetValueAsString('request_type');
+    except
+      on E : Exception do
+        begin
+          Log('!', 'Invalid binary command encoding:%s', [E.Message]);
+          AContext.Connection.Socket.Close;
+          exit;
+        end;
+    end;
+    ClientBinDictCommand(AContext, Session, ReqType, ReqDict);
+  finally
+    ReqDict.Free;
+  end;
+end;
+
+procedure TkvDatasysServer.ClientBinDictCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestType: String;
+          const RequestDict: TkvDictionaryValue);
+var
+  ResponseDict : TkvDictionaryValue;
+  RespType : String;
+  CloseCon : Boolean;
+  V : AkvValue;
+  CmdS : String;
+  ErrorS : String;
+  RespDictSize : UInt32;
+  RespBufSize : Integer;
+  RespBuf : TIdBytes;
+begin
+  CloseCon := False;
+  ResponseDict := TkvDictionaryValue.Create;
+  try
+    try
+      if RequestType = '' then
+        RespType := 'nil'
+      else
+      if RequestType = 'exec_kql' then
+        begin
+          CmdS := RequestDict.GetValueAsString('kql');
+          V := Session.ExecScript(CmdS);
+          RespType := 'kql_result';
+          if Assigned(V) then
+            if V is AkvValue then
+              ResponseDict.Add('value', AkvValue(V))
+            else
+              ErrorS := 'unknown_value_type';
+        end
+      else
+      if RequestType = 'key_command' then
+        begin
+          ClientBinKeyCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'keycmd_response';
+        end
+      else
+      if RequestType = 'use' then
+        begin
+          ClientBinUseCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'use_response';
+        end
+      else
+      if RequestType = 'exit' then
+        begin
+          RespType := 'bye';
+          CloseCon := True;
+        end
+      else
+      if RequestType = 'stop' then
+        begin
+          RespType := 'shuttingdown';
+          CloseCon := True;
+          if Assigned(FOnStopCommand) then
+            FOnStopCommand(self);
+        end
+      else
+        ErrorS := 'unknownrequesttype';
+    except
+      on E : Exception do
+        ErrorS := E.ClassName + ':' + E.Message;
+    end;
+
+    if ErrorS <> '' then
+      begin
+        ResponseDict.AddString('response_type', 'error');
+        ResponseDict.AddString('error', ErrorS);
+      end
+    else
+      ResponseDict.AddString('response_type', RespType);
+
+    RespDictSize := ResponseDict.SerialSize;
+    Assert(RespDictSize > 0);
+    RespBufSize := RespDictSize + 4;
+    SetLength(RespBuf, RespBufSize);
+    Move(RespDictSize, RespBuf[0], SizeOf(UInt32));
+    ResponseDict.GetSerialBuf(RespBuf[4], RespBufSize);
+    AContext.Connection.Socket.Write(RespBuf);
+
+    if CloseCon then
+      AContext.Connection.Socket.CloseGracefully;
+  finally
+    ResponseDict.Free;
+  end;
+end;
+
+procedure TkvDatasysServer.ClientBinKeyCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  KeyCmdS : String;
+  DbS, DsS : String;
+  KeyS : String;
+  Val : AkvValue;
+  ValSel : AkvValue;
+begin
+  KeyCmdS := RequestDict.GetValueAsString('cmd');
+  DbS := RequestDict.GetValueAsString('db');
+  DsS := RequestDict.GetValueAsString('ds');
+  KeyS := RequestDict.GetValueAsString('key');
+  if KeyCmdS = 'insert' then
+    begin
+      Val := RequestDict.GetValue('val');
+      Session.AddRecord(DbS, DsS, KeyS, Val);
+    end
+  else
+  if KeyCmdS = 'update' then
+    begin
+      Val := RequestDict.GetValue('val');
+      Session.SetRecord(DbS, DsS, KeyS, Val);
+    end
+  else
+  if KeyCmdS = 'delete' then
+    Session.DeleteRecord(DbS, DsS, KeyS)
+  else
+  if KeyCmdS = 'select' then
+    begin
+      ValSel := Session.GetRecord(DbS, DsS, KeyS);
+      ResponseDict.Add('val', ValSel);
+    end
+  else
+  if KeyCmdS = 'append' then
+    begin
+      Val := RequestDict.GetValue('val');
+      Session.AppendRecord(DbS, DsS, KeyS, Val);
+    end
+  else
+  if KeyCmdS = 'exists' then
+    ResponseDict.AddBoolean('val', Session.RecordExists(DbS, DsS, KeyS))
+  else
+  if KeyCmdS = 'mkpath' then
+    Session.MakePath(DbS, DsS, KeyS)
+  else
+    raise EkvDatasysServer.Create('Unrecognised key command');
+end;
+
+procedure TkvDatasysServer.ClientBinUseCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  DbS, DsS : String;
+begin
+  DbS := RequestDict.GetValueAsString('db');
+  DsS := RequestDict.GetValueAsString('ds');
+  Session.UseDataset(DbS, DsS);
+end;
+
+
+
+end.
+

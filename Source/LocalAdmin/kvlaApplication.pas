@@ -31,7 +31,7 @@ type
 
     FSys     : TkvSystem;
     FMSys    : TkvScriptSystem;
-    FSession : TkvSession;
+    FSession : TkvScriptSession;
     FParser  : TkvScriptParser;
 
   protected

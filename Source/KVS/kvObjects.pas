@@ -76,13 +76,16 @@ type
               out HashCollision: Boolean): Boolean;
     procedure HashRecSetKey(var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64);
+
     procedure HashRecReleaseValue(var HashRec: TkvHashFileRecord);
     procedure HashRecSetValue(var HashRec: TkvHashFileRecord;
               const Value: AkvValue);
+
     procedure HashRecInitKeyValue(out HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
               const IsFolder: Boolean; var FolderBaseIdx: Word32);
+
     procedure RecursiveHashRecSlotCollisionResolve(
               const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
@@ -94,19 +97,24 @@ type
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
               const IsFolder: Boolean; var FolderBaseIdx: Word32);
+
     procedure InternalAddRecord(const KeyBaseIdx: Word32; const Key: String;
               const Value: AkvValue;
               const IsFolder: Boolean; out FolderBaseIdx: Word32);
+
     function  LocateRecordFromBase(const BaseIndex: Word32; const Key: String;
               out HashRecIdx: Word32; out HashRec: TkvHashFileRecord): Boolean;
     function  LocateRecord(const Key: String;
               out HashRecIdx: Word32; out HashRec: TkvHashFileRecord): Boolean;
+
     function  HashRecToKey(const HashRec: TkvHashFileRecord): String;
     function  HashRecToValue(const HashRec: TkvHashFileRecord): AkvValue;
+
     procedure RecursiveGetChildRecords(const BaseIdx: Word32;
               const D: TkvDictionaryValue);
     function  RecursiveGetFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
     function  RecursiveGetAllRecords: AkvValue;
+
     procedure HashRecAppendValue_Rewrite(var HashRec: TkvHashFileRecord;
               const Value: AkvValue);
     procedure HashRecAppendValue_StrOrBin(var HashRec: TkvHashFileRecord;
@@ -117,6 +125,7 @@ type
               const Value: AkvValue);
     procedure HashRecAppendValue(var HashRec: TkvHashFileRecord;
               const Value: AkvValue);
+
     procedure InternalDeleteRecord(const HashRecIdx: Word32; var HashRec: TkvHashFileRecord);
     function  SetNextIteratorRecord(var Iterator: TkvDatasetIterator): Boolean;
 
