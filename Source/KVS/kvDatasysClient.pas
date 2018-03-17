@@ -199,29 +199,53 @@ begin
   Result := RespS;
 end;
 
-function TkvDatasysClient.ExecBinCommand(const RequestDict: TkvDictionaryValue): TkvDictionaryValue;
+procedure kvClientRequestDictToRequestBuf(const RequestDict: TkvDictionaryValue; var RequestBuf: TIdBytes);
 var
   ReqDictSize : UInt32;
   ReqBufSize : UInt32;
-  ReqBuf : TIdBytes;
-  RespSize : UInt32;
-  RespBuf : TIdBytes;
-  RespDict : TkvDictionaryValue;
 begin
   Assert(Assigned(RequestDict));
   ReqDictSize := RequestDict.SerialSize;
   Assert(ReqDictSize > 0);
   ReqBufSize := ReqDictSize + 11;
-  SetLength(ReqBuf, ReqBufSize);
-  ReqBuf[0] := Ord('b');
-  ReqBuf[1] := Ord('i');
-  ReqBuf[2] := Ord('n');
-  ReqBuf[3] := 13;
-  ReqBuf[4] := 10;
-  Move(ReqDictSize, ReqBuf[5], SizeOf(UInt32));
-  RequestDict.GetSerialBuf(ReqBuf[9], ReqDictSize);
-  ReqBuf[9 + ReqDictSize] := 13;
-  ReqBuf[10 + ReqDictSize] := 10;
+  SetLength(RequestBuf, ReqBufSize);
+  RequestBuf[0] := Ord('b');
+  RequestBuf[1] := Ord('i');
+  RequestBuf[2] := Ord('n');
+  RequestBuf[3] := 13;
+  RequestBuf[4] := 10;
+  Move(ReqDictSize, RequestBuf[5], SizeOf(UInt32));
+  RequestDict.GetSerialBuf(RequestBuf[9], ReqDictSize);
+  RequestBuf[9 + ReqDictSize] := 13;
+  RequestBuf[10 + ReqDictSize] := 10;
+end;
+
+procedure kvClientResponseBufToResponseDict(const ResponseBuf: TIdBytes; var ResponseDict: TkvDictionaryValue);
+var
+  RespSize : Integer;
+begin
+  RespSize := Length(ResponseBuf);
+  ResponseDict := TkvDictionaryValue.Create;
+  try
+    Assert(RespSize > 0);
+    ResponseDict.PutSerialBuf(ResponseBuf[0], RespSize);
+  except
+    on E : Exception do
+      begin
+        FreeAndNil(ResponseDict);
+        raise EkvDatasysClient.CreateFmt('Invalid response encoding:%s', [E.Message]);
+      end;
+  end;
+end;
+
+function TkvDatasysClient.ExecBinCommand(const RequestDict: TkvDictionaryValue): TkvDictionaryValue;
+var
+  ReqBuf : TIdBytes;
+  RespSize : UInt32;
+  RespBuf : TIdBytes;
+  RespDict : TkvDictionaryValue;
+begin
+  kvClientRequestDictToRequestBuf(RequestDict, ReqBuf);
 
   FTcpClient.Socket.Write(ReqBuf);
 
@@ -231,16 +255,7 @@ begin
   SetLength(RespBuf, RespSize);
   FTcpClient.IOHandler.ReadBytes(RespBuf, RespSize, False);
 
-  RespDict := TkvDictionaryValue.Create;
-  try
-    RespDict.PutSerialBuf(RespBuf[0], RespSize);
-  except
-    on E : Exception do
-      begin
-        RespDict.Free;
-        raise EkvDatasysClient.CreateFmt('Invalid response encoding:%s', [E.Message]);
-      end;
-  end;
+  kvClientResponseBufToResponseDict(RespBuf, RespDict);
 
   Result := RespDict;
 end;

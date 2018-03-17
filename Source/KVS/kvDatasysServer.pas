@@ -341,6 +341,21 @@ begin
   end;
 end;
 
+procedure kvServerResponseDictToResponseBuf(const ResponseDict: TkvDictionaryValue;
+          var ResponseBuf: TIdBytes);
+var
+  RespDictSize : UInt32;
+  RespBufSize : Integer;
+begin
+  Assert(Assigned(ResponseDict));
+  RespDictSize := ResponseDict.SerialSize;
+  Assert(RespDictSize > 0);
+  RespBufSize := RespDictSize + 4;
+  SetLength(ResponseBuf, RespBufSize);
+  Move(RespDictSize, ResponseBuf[0], SizeOf(UInt32));
+  ResponseDict.GetSerialBuf(ResponseBuf[4], RespBufSize);
+end;
+
 procedure TkvDatasysServer.ClientBinDictCommand(const AContext: TIdContext;
           const Session: TkvScriptSession; const RequestType: String;
           const RequestDict: TkvDictionaryValue);
@@ -351,8 +366,6 @@ var
   V : AkvValue;
   CmdS : String;
   ErrorS : String;
-  RespDictSize : UInt32;
-  RespBufSize : Integer;
   RespBuf : TIdBytes;
 begin
   CloseCon := False;
@@ -414,12 +427,8 @@ begin
     else
       ResponseDict.AddString('response_type', RespType);
 
-    RespDictSize := ResponseDict.SerialSize;
-    Assert(RespDictSize > 0);
-    RespBufSize := RespDictSize + 4;
-    SetLength(RespBuf, RespBufSize);
-    Move(RespDictSize, RespBuf[0], SizeOf(UInt32));
-    ResponseDict.GetSerialBuf(RespBuf[4], RespBufSize);
+    kvServerResponseDictToResponseBuf(ResponseDict, RespBuf);
+
     AContext.Connection.Socket.Write(RespBuf);
 
     if CloseCon then
