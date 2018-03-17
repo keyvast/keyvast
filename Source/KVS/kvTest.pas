@@ -1560,6 +1560,9 @@ var
   ValA : AkvValue;
   ValI : TkvIntegerValue;
 
+  Handle : Int64;
+  Key : String;
+
 begin
   Delete_Script_Database;
   Sys := TkvSystem.Create(BasePath, 'testsys');
@@ -1587,10 +1590,31 @@ begin
         Exec('INSERT 1 1', '$nil');
         Exec('SELECT 1', '$val:1');
 
+        Assert(Client.Iterate('TESTDB', 'testds', '', Handle, Key));
+        Assert(Key = '1');
+        ValA := Client.IterateGetValue(Handle);
+        Assert(ValA.AsInteger = 1);
+        ValA.Free;
+        Assert(not Client.IterateNext(Handle, Key));
+
         ExecBinKql('INSERT 2 2', '');
         ExecBinKql('SELECT 2', '2');
         ExecBinKql('INSERT 3 3', '');
         ExecBinKql('SELECT 3', '3');
+
+        Assert(Client.Iterate('TESTDB', 'testds', '', Handle, Key));
+        ValA := Client.IterateGetValue(Handle);
+        Assert(Key = ValA.AsString);
+        ValA.Free;
+        Assert(Client.IterateNext(Handle, Key));
+        ValA := Client.IterateGetValue(Handle);
+        Assert(Key = ValA.AsString);
+        ValA.Free;
+        Assert(Client.IterateNext(Handle, Key));
+        ValA := Client.IterateGetValue(Handle);
+        Assert(Key = ValA.AsString);
+        ValA.Free;
+        Assert(not Client.IterateNext(Handle, Key));
 
         Assert(not Client.Exists('TESTDB', 'testds', '4'));
         ValI := TkvIntegerValue.Create(4);

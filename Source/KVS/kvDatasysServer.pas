@@ -3,6 +3,7 @@
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/03/16  0.01  Initial development, binary protocol }
+{ 2018/03/18  0.02  Iterator functions }
 
 {$INCLUDE kvInclude.inc}
 
@@ -70,6 +71,22 @@ type
               const RequestDict: TkvDictionaryValue;
               const ResponseDict: TkvDictionaryValue);
     procedure ClientBinUseCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
+    procedure ClientBinIterateCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
+    procedure ClientBinIterateNextCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
+    procedure ClientBinIterateGetValueCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
+    procedure ClientBinIterateFinaliseCommand(const AContext: TIdContext;
               const Session: TkvScriptSession;
               const RequestDict: TkvDictionaryValue;
               const ResponseDict: TkvDictionaryValue);
@@ -390,7 +407,31 @@ begin
       if RequestType = 'key_command' then
         begin
           ClientBinKeyCommand(AContext, Session, RequestDict, ResponseDict);
-          RespType := 'keycmd_response';
+          RespType := 'key_command_response';
+        end
+      else
+      if RequestType = 'iterate_next' then
+        begin
+          ClientBinIterateNextCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'iterate_next_response';
+        end
+      else
+      if RequestType = 'iterate_getvalue' then
+        begin
+          ClientBinIterateGetValueCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'iterate_getvalue_response';
+        end
+      else
+      if RequestType = 'iterate' then
+        begin
+          ClientBinIterateCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'iterate_response';
+        end
+      else
+      if RequestType = 'iterate_fin' then
+        begin
+          ClientBinIterateFinaliseCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'iterate_fin_response';
         end
       else
       if RequestType = 'use' then
@@ -497,6 +538,98 @@ begin
   DbS := RequestDict.GetValueAsString('db');
   DsS := RequestDict.GetValueAsString('ds');
   Session.UseDataset(DbS, DsS);
+end;
+
+const
+  DatasysServer_IteratorMagic = $77123488;
+
+type
+  TkvDatasysServerDatasetIterator = record
+    Magic : Word32;
+    Iter  : TkvDatasetIterator;
+  end;
+  PkvDatasysServerDatasetIterator = ^TkvDatasysServerDatasetIterator;
+
+procedure ValidateIterator(const Iter: PkvDatasysServerDatasetIterator);
+begin
+  if not Assigned(Iter) then
+    raise EkvDatasysServer.Create('Invalid handle');
+  if Iter^.Magic <> DatasysServer_IteratorMagic then
+    raise EkvDatasysServer.Create('Invalid handle');
+end;
+
+procedure TkvDatasysServer.ClientBinIterateCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  DbS, DsS, PathS : String;
+  Iter : PkvDatasysServerDatasetIterator;
+  IterR : Boolean;
+begin
+  DbS := RequestDict.GetValueAsString('db');
+  DsS := RequestDict.GetValueAsString('ds');
+  PathS := RequestDict.GetValueAsString('path');
+  New(Iter);
+  try
+    Iter.Magic := DatasysServer_IteratorMagic;
+    IterR := Session.IterateRecords(DbS, DsS, PathS, Iter^.Iter);
+  except
+    Dispose(Iter);
+    raise;
+  end;
+  ResponseDict.AddBoolean('hasvalue', IterR);
+  if not IterR then
+    Dispose(Iter)
+  else
+    begin
+      ResponseDict.AddInteger('handle', Int64(Iter));
+      ResponseDict.AddString('key', Session.IteratorGetKey(Iter^.Iter));
+    end;
+end;
+
+procedure TkvDatasysServer.ClientBinIterateNextCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  HandleInt : Int64;
+  Iter : PkvDatasysServerDatasetIterator;
+  IterR : Boolean;
+begin
+  HandleInt := RequestDict.GetValueAsInteger('handle');
+  Iter := Pointer(HandleInt);
+  ValidateIterator(Iter);
+  IterR := Session.IterateNextRecord(Iter^.Iter);
+  ResponseDict.AddBoolean('hasvalue', IterR);
+  if IterR then
+    ResponseDict.AddString('key', Session.IteratorGetKey(Iter^.Iter));
+end;
+
+procedure TkvDatasysServer.ClientBinIterateGetValueCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  HandleInt : Int64;
+  Iter : PkvDatasysServerDatasetIterator;
+  ItVal : AkvValue;
+begin
+  HandleInt := RequestDict.GetValueAsInteger('handle');
+  Iter := Pointer(HandleInt);
+  ValidateIterator(Iter);
+  ItVal := Session.IteratorGetValue(Iter^.Iter);
+  ResponseDict.Add('value', ItVal);
+end;
+
+procedure TkvDatasysServer.ClientBinIterateFinaliseCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  HandleInt : Int64;
+  Iter : PkvDatasysServerDatasetIterator;
+begin
+  HandleInt := RequestDict.GetValueAsInteger('handle');
+  Iter := Pointer(HandleInt);
+  ValidateIterator(Iter);
+  Dispose(Iter);
 end;
 
 

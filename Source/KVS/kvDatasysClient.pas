@@ -3,6 +3,7 @@
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/03/16  0.01  Initial development, binary protocol }
+{ 2018/03/18  0.02  Iterator functions }
 
 {$INCLUDE kvInclude.inc}
 
@@ -72,6 +73,12 @@ type
     function  Select(const DatabaseName, DatasetName, Key: String): AkvValue;
     function  Exists(const DatabaseName, DatasetName, Key: String): Boolean;
     procedure MkPath(const DatabaseName, DatasetName, Key: String);
+
+    function  Iterate(const DatabaseName, DatasetName, Path: String;
+              var Handle: Int64; var Key: String): Boolean;
+    function  IterateNext(const Handle: Int64; var Key: String): Boolean;
+    function  IterateGetValue(const Handle: Int64): AkvValue;
+    procedure IterateFin(const Handle: Int64);
   end;
 
 
@@ -481,6 +488,106 @@ begin
     Req.AddString('db', DatabaseName);
     Req.AddString('ds', DatasetName);
     Req.AddString('key', Key);
+    Resp := ExecBinCommand(Req);
+  finally
+    Req.Free;
+  end;
+  try
+    CheckResponseError(Resp);
+  finally
+    Resp.Free;
+  end;
+end;
+
+function TkvDatasysClient.Iterate(const DatabaseName, DatasetName, Path: String;
+         var Handle: Int64; var Key: String): Boolean;
+var
+  Req : TkvDictionaryValue;
+  Resp : TkvDictionaryValue;
+begin
+  Req := TkvDictionaryValue.Create;
+  try
+    Req.AddString('request_type', 'iterate');
+    Req.AddString('db', DatabaseName);
+    Req.AddString('ds', DatasetName);
+    Req.AddString('path', Path);
+    Resp := ExecBinCommand(Req);
+  finally
+    Req.Free;
+  end;
+  try
+    CheckResponseError(Resp);
+    Result := Resp.GetValueAsBoolean('hasvalue');
+    if Result then
+      begin
+        Handle := Resp.GetValueAsInteger('handle');
+        Key := Resp.GetValueAsString('key');
+      end
+    else
+      begin
+        Handle := 0;
+        Key := '';
+      end;
+  finally
+    Resp.Free;
+  end;
+end;
+
+function TkvDatasysClient.IterateNext(const Handle: Int64; var Key: String): Boolean;
+var
+  Req : TkvDictionaryValue;
+  Resp : TkvDictionaryValue;
+begin
+  Req := TkvDictionaryValue.Create;
+  try
+    Req.AddString('request_type', 'iterate_next');
+    Req.AddInteger('handle', Handle);
+    Resp := ExecBinCommand(Req);
+  finally
+    Req.Free;
+  end;
+  try
+    CheckResponseError(Resp);
+    Result := Resp.GetValueAsBoolean('hasvalue');
+    if Result then
+      Key := Resp.GetValueAsString('key')
+    else
+      Key := '';
+  finally
+    Resp.Free;
+  end;
+end;
+
+function TkvDatasysClient.IterateGetValue(const Handle: Int64): AkvValue;
+var
+  Req : TkvDictionaryValue;
+  Resp : TkvDictionaryValue;
+begin
+  Req := TkvDictionaryValue.Create;
+  try
+    Req.AddString('request_type', 'iterate_getvalue');
+    Req.AddInteger('handle', Handle);
+    Resp := ExecBinCommand(Req);
+  finally
+    Req.Free;
+  end;
+  try
+    CheckResponseError(Resp);
+    Result := AkvValue(Resp.ReleaseKey('value'));
+  finally
+    Resp.Free;
+  end;
+end;
+
+procedure TkvDatasysClient.IterateFin(const Handle: Int64);
+var
+  Req : TkvDictionaryValue;
+  Resp : TkvDictionaryValue;
+begin
+  Req := TkvDictionaryValue.Create;
+  try
+    Req.AddString('request_type', 'iterate_fin');
+    Req.AddInteger('handle', Handle);
     Resp := ExecBinCommand(Req);
   finally
     Req.Free;

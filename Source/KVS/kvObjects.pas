@@ -57,6 +57,7 @@ type
     HashRecIdx   : Word32;
     HashRec      : TkvHashFileRecord;
   end;
+  PkvDatasetIterator = ^TkvDatasetIterator;
 
   TkvDataset = class
   private
