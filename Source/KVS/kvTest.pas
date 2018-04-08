@@ -1406,6 +1406,14 @@ begin
     Exec('SELECT testds\1/2/3', '3');
     Exec('SELECT TESTDB:testds\1/2/3', '3');
 
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\/', '{1:{}}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1', '{2:{}}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1/2', '{2:null,3:null,1:null}');
+
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\/ RECURSE', '{1:{2:{2:null,3:null,1:null}}}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1 RECURSE', '{2:{2:null,3:null,1:null}}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1/2 RECURSE', '{2:null,3:null,1:null}');
+
     Exec('UPDATE 1/2/3 2');
     Exec('SELECT 1/2/3', '2');
     Exec('SELECT 1/2/3 / 2', '1');
@@ -1605,6 +1613,10 @@ begin
         ValA.Free;
         Assert(not Client.IterateNext(Handle, Key));
 
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True);
+        Assert(ValA.AsString = '{1:null}');
+        ValA.Free;
+
         ExecBinKql('INSERT 2 2', '');
         ExecBinKql('SELECT 2', '2');
         ExecBinKql('INSERT 3 3', '');
@@ -1623,6 +1635,10 @@ begin
         Assert(Key = ValA.AsString);
         ValA.Free;
         Assert(not Client.IterateNext(Handle, Key));
+
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True);
+        Assert(ValA.AsString = '{2:null,3:null,1:null}');
+        ValA.Free;
 
         Assert(not Client.Exists('TESTDB', 'testds', '4'));
         ValI := TkvIntegerValue.Create(4);

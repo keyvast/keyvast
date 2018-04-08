@@ -14,6 +14,7 @@
 { 2018/03/03  0.10  Extend record iterator to use path }
 { 2018/03/04  0.11  In operator }
 { 2018/03/05  0.12  Append statement }
+{ 2018/04/08  0.13  LIST_OF_KEYS expression }
 
 {$INCLUDE kvInclude.inc}
 
@@ -82,6 +83,8 @@ type
       stAPPEND,
       stEXISTS,
       stMKPATH,
+      stLIST_OF_KEYS,
+      stRECURSE,
 
       stSET,
 
@@ -156,6 +159,7 @@ type
     function  ParseListOfDatasetsExpression: AkvScriptExpression;
     function  ParseIteratorKeyExpression: AkvScriptExpression;
     function  ParseIteratorValueExpression: AkvScriptExpression;
+    function  ParseListOfKeysExpression: AkvScriptExpression;
     function  ParseUniqueIdExpression: AkvScriptExpression;
     function  ParseValue: AkvScriptValue;
     function  ParseFactor: AkvScriptExpression;
@@ -205,7 +209,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 38;
+  kvScriptKeywordCount = 40;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -221,6 +225,8 @@ const
       'SELECT',
       'EXISTS',
       'MKPATH',
+      'LIST_OF_KEYS',
+      'RECURSE',
       'SET',
       'EVAL',
       'EXEC',
@@ -261,6 +267,8 @@ const
       stSELECT,
       stEXISTS,
       stMKPATH,
+      stLIST_OF_KEYS,
+      stRECURSE,
       stSET,
       stEVAL,
       stEXEC,
@@ -1029,6 +1037,27 @@ begin
   Result := TkvScriptIteratorValueExpression.Create(Iden);
 end;
 
+function TkvScriptParser.ParseListOfKeysExpression: AkvScriptExpression;
+var
+  RecRef : TkvScriptRecordReference;
+  Recurse : Boolean;
+begin
+  Assert(FToken = stLIST_OF_KEYS);
+  SkipWhitespace;
+  GetNextTokenAsKey;
+  RecRef := ParseRecordRef;
+  if FToken = stWhitespace then
+    GetNextToken;
+  if FToken = stRECURSE then
+    begin
+      Recurse := True;
+      GetNextToken;
+    end
+  else
+    Recurse := False;
+  Result := TkvScriptListOfKeysExpression.Create(RecRef, Recurse);
+end;
+
 function TkvScriptParser.ParseUniqueIdExpression: AkvScriptExpression;
 var
   DbName : String;
@@ -1144,6 +1173,8 @@ begin
         Ex := ParseIteratorKeyExpression;
       stITERATOR_VALUE :
         Ex := ParseIteratorValueExpression;
+      stLIST_OF_KEYS :
+        Ex := ParseListOfKeysExpression;
     end;
   if not Assigned(Ex) then
     raise EkvScriptParser.Create('Expression expected');

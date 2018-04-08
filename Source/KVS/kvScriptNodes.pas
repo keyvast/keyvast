@@ -869,6 +869,22 @@ type
     function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
   end;
 
+  { List Of Keys expression }
+
+  TkvScriptListOfKeysExpression = class(AkvScriptExpression)
+  private
+    FRecRef : TkvScriptRecordReference;
+    FRecurse : Boolean;
+
+  public
+    constructor Create(const RecRef: TkvScriptRecordReference; const Recurse: Boolean);
+    destructor Destroy; override;
+
+    function  Duplicate: AkvScriptNode; override;
+    function  GetAsString: String; override;
+    function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
   { Create Procedure statement }
 
   TkvScriptCreateProcedureParamNameArray = array of String;
@@ -3683,6 +3699,49 @@ begin
   ItV := TkvDatasetIteratorValue(It);
   Val := Context.Session.IteratorGetValue(ItV.FIterator);
   Result := Val;
+end;
+
+
+
+{ TkvScriptListOfKeysExpression }
+
+constructor TkvScriptListOfKeysExpression.Create(const RecRef: TkvScriptRecordReference;
+            const Recurse: Boolean);
+begin
+  inherited Create;
+  FRecRef := RecRef;
+  FRecurse := Recurse;
+end;
+
+destructor TkvScriptListOfKeysExpression.Destroy;
+begin
+  FreeAndNil(FRecRef);
+  inherited Create;
+end;
+
+function TkvScriptListOfKeysExpression.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptListOfKeysExpression.Create(
+      FRecRef.Duplicate as TkvScriptRecordReference,
+      FRecurse);
+end;
+
+function TkvScriptListOfKeysExpression.GetAsString: String;
+var
+  S : String;
+begin
+  S := 'LIST_OF_KEYS ' + FRecRef.GetAsString;
+  if FRecurse then
+    S := S + ' RECURSE';
+  Result := S;
+end;
+
+function TkvScriptListOfKeysExpression.Evaluate(const Context: TkvScriptContext): AkvValue;
+var
+  ResDb, ResDs, ResRec : String;
+begin
+  FRecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
+  Result := Context.Session.ListOfKeys(ResDb, ResDs, ResRec, FRecurse);
 end;
 
 

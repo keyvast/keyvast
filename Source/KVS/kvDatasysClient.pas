@@ -73,6 +73,7 @@ type
     function  Select(const DatabaseName, DatasetName, Key: String): AkvValue;
     function  Exists(const DatabaseName, DatasetName, Key: String): Boolean;
     procedure MkPath(const DatabaseName, DatasetName, Key: String);
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue;
 
     function  Iterate(const DatabaseName, DatasetName, Path: String;
               var Handle: Int64; var Key: String): Boolean;
@@ -494,6 +495,35 @@ begin
   end;
   try
     CheckResponseError(Resp);
+  finally
+    Resp.Free;
+  end;
+end;
+
+function TkvDatasysClient.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue;
+var
+  Req : TkvDictionaryValue;
+  Resp : TkvDictionaryValue;
+begin
+  Req := TkvDictionaryValue.Create;
+  try
+    Req.AddString('request_type', 'key_command');
+    Req.AddString('cmd', 'listofkeys');
+    Req.AddString('db', DatabaseName);
+    Req.AddString('ds', DatasetName);
+    Req.AddString('key', KeyPath);
+    Req.AddBoolean('recurse', Recurse);
+    Resp := ExecBinCommand(Req);
+  finally
+    Req.Free;
+  end;
+  try
+    CheckResponseError(Resp);
+    if not Assigned(Resp) then
+      raise EkvDatasysClient.Create('No response');
+    if not Resp.Exists('val') then
+      raise EkvDatasysClient.Create('No value');
+    Result := AkvValue(Resp.ReleaseKey('val'));
   finally
     Resp.Free;
   end;

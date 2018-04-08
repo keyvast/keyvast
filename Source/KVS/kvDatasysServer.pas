@@ -526,6 +526,12 @@ begin
   if KeyCmdS = 'mkpath' then
     Session.MakePath(DbS, DsS, KeyS)
   else
+  if KeyCmdS = 'listofkeys' then
+    begin
+      Val := Session.ListOfKeys(DbS, DsS, KeyS, RequestDict.GetValueAsBoolean('recurse'));
+      ResponseDict.Add('val', Val);
+    end
+  else
     raise EkvDatasysServer.Create('Unrecognised key command');
 end;
 

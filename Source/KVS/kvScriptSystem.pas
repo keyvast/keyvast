@@ -102,6 +102,7 @@ type
     procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); override;
     function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; override;
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue; override;
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; override;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); override;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
@@ -245,6 +246,10 @@ type
               const DatabaseName, DatasetName, Key: String): AkvValue; overload;
     function  GetRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
               const Key: String): AkvValue; overload;
+
+    function  ListOfKeys(const Session: TkvScriptSession;
+              const DatabaseName, DatasetName, KeyPath: String;
+              const Recurse: Boolean): AkvValue;
 
     procedure DeleteRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String); overload;
@@ -503,6 +508,15 @@ begin
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
         Key);
+end;
+
+function TkvScriptSession.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
+         const Recurse: Boolean): AkvValue;
+begin
+  Result := FSystem.ListOfKeys(self,
+      UsedDatabaseName(DatabaseName),
+      UsedDatasetName(DatasetName),
+      KeyPath, Recurse);
 end;
 
 function TkvScriptSession.RecordExists(const DatabaseName, DatasetName, Key: String): Boolean;
@@ -1280,6 +1294,18 @@ begin
   ExecLock;
   try
     Result := FSystem.GetRecord(Dataset, Key);
+  finally
+    ExecUnlock;
+  end;
+end;
+
+function TkvScriptSystem.ListOfKeys(const Session: TkvScriptSession;
+         const DatabaseName, DatasetName, KeyPath: String;
+         const Recurse: Boolean): AkvValue;
+begin
+  ExecLock;
+  try
+    Result := FSystem.ListOfKeys(DatabaseName, DatasetName, KeyPath, Recurse);
   finally
     ExecUnlock;
   end;
