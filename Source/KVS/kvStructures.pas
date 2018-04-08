@@ -10,6 +10,8 @@
 { 2018/03/03  0.05  Folders support in hash file }
 { 2018/03/08  0.06  Decrease level slot count from 64 to 32 }
 {                   Change hash file record structure for longer keys }
+{ 2018/04/08  0.07  Reorganise hash file record structure (breaks
+{                   compatibility) and add Timestamp field }
 
 {$INCLUDE kvInclude.inc}
 
@@ -297,7 +299,7 @@ const
   KV_HashFileRecord_Version = 1;
 
   KV_HashFileRecord_SlotShortKeyLength = 26;
-  KV_HashFileRecord_SlotShortValueSize = 34;
+  KV_HashFileRecord_SlotShortValueSize = 32;
 
 type
   TkvHashFileRecordType = (
@@ -317,18 +319,16 @@ type
     Magic                 : Word16;                 // KV_HashFileRecord_Magic
     Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
+    Timestamp             : TDateTime;              // Timestamp of last change for Key/Value record types
+    Reserved_1            : UInt64;
     ChildSlotRecordIndex  : Word32;                 // Used by ParentSlot and HashCollision
-    Reserved_1            : Word32;
-    KeyHash               : UInt64;
+    KeyHash               : UInt64;                 // kvLevelHash of Key
     KeyLength             : Word16;
-    Reserved_2            : Word16;
     KeyShort              : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
     KeyLongChainIndex     : Word32;
-    Reserved_3            : Word32;
     ValueType             : TkvHashFileRecordValueType;
     ValueTypeId           : Byte;
     ValueSize             : Word32;
-    Reserved_4            : Word32;
     case Integer of
       0 : (ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte);
       1 : (ValueLongChainIndex  : Word32);
