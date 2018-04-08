@@ -1056,7 +1056,9 @@ begin
                 begin
                   HashRecI := HashRecBaseI + SltI;
                   FHashFile.LoadRecord(HashRecI, HashRec);
-                  R := HashRecSameKey(HashRec, Key, Hsh, HashCol);
+                  R := HashRec.RecordType = hfrtKeyValue;
+                  if R then
+                    R := HashRecSameKey(HashRec, Key, Hsh, HashCol);
                   if R then
                     begin
                       HashRecIdx := HashRecI;
