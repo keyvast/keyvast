@@ -1235,6 +1235,8 @@ begin
     Exec('SELECT 1', 'Hi Hello');
     Exec('APPEND 1 " world"');
     Exec('SELECT 1', 'Hi Hello world');
+    Exec('APPEND 1 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"');
+    Exec('SELECT 1', 'Hi Hello world!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
     Exec('DELETE 1');
 
     Exec('INSERT 1 BINARY("")');
@@ -1242,6 +1244,8 @@ begin
     Exec('SELECT 1', 'Hello');
     Exec('APPEND 1 BINARY(" world")');
     Exec('SELECT 1', 'Hello world');
+    Exec('APPEND 1 BINARY("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")');
+    Exec('SELECT 1', 'Hello world!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
     Exec('DELETE 1');
 
     Exec('INSERT 1 {a:[1]}');
@@ -1267,6 +1271,8 @@ begin
     Exec('SELECT 1', '[1,2,3]');
     Exec('APPEND 1 [[1]]');
     Exec('SELECT 1', '[1,2,3,[1]]');
+    Exec('APPEND 1 [4,5,6,7,8,9,10]');
+    Exec('SELECT 1', '[1,2,3,[1],4,5,6,7,8,9,10]');
     Exec('DELETE 1');
 
     Exec('INSERT 1 {}');
@@ -1274,6 +1280,8 @@ begin
     Exec('SELECT 1', '{name:"john"}');
     Exec('APPEND 1 {name2:"john2"}');
     Exec('SELECT 1', '{name:"john",name2:"john2"}');
+    Exec('APPEND 1 {name3:"xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}');
+    Exec('SELECT 1', '{name:"john",name2:"john2",name3:"xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}');
     Exec('DELETE 1');
 
     Exec('CREATE PROCEDURE proc1(@par1, @par2) BEGIN RETURN @par1 + @par2 END');
