@@ -559,6 +559,21 @@ type
     function  GetAsString: String; override;
   end;
 
+  { Set Paths statement }
+
+  TkvScriptSetPathsStatement = class(AkvScriptStatement)
+  private
+    FValue : AkvScriptExpression;
+
+  public
+    constructor Create(const Value: AkvScriptExpression);
+    destructor Destroy; override;
+
+    function  Duplicate: AkvScriptNode; override;
+    function  GetAsString: String; override;
+    function  Execute(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
   { Use statement }
 
   TkvScriptUseStatement = class(AkvScriptStatement)
@@ -2719,6 +2734,45 @@ end;
 
 
 
+{ TkvScriptSetPathsStatement }
+
+constructor TkvScriptSetPathsStatement.Create(const Value: AkvScriptExpression);
+begin
+  inherited Create;
+  FValue := Value;
+end;
+
+destructor TkvScriptSetPathsStatement.Destroy;
+begin
+  FreeAndNil(FValue);
+  inherited Destroy;
+end;
+
+function TkvScriptSetPathsStatement.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptSetPathsStatement.Create(FValue.DuplicateExpression);
+end;
+
+function TkvScriptSetPathsStatement.GetAsString: String;
+begin
+  Result := 'SETPATHS ' + FValue.GetAsString;
+end;
+
+function TkvScriptSetPathsStatement.Execute(const Context: TkvScriptContext): AkvValue;
+var
+  V : AkvValue;
+begin
+  V := FValue.Evaluate(Context);
+  try
+    Context.Session.SetOptionPaths(V.AsBoolean);
+  finally
+    V.Free;
+  end;
+  Result := nil;
+end;
+
+
+
 { TkvScriptUseStatement }
 
 constructor TkvScriptUseStatement.Create(const DatabaseName, DatasetName: String);
@@ -2987,25 +3041,27 @@ var
   FieldRef : AkvScriptFieldReference;
   V, A : AkvValue;
   ResDb, ResDs, ResRec : String;
+  UsePaths : Boolean;
 begin
   RecRef := FRef.FRecordRef;
   FieldRef := FRef.FFieldRef;
+  UsePaths := Context.Session.GetOptionPaths;
   V := FValue.Evaluate(Context);
   try
     RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
     if not Assigned(FieldRef) then
       begin
-        Context.Session.AddRecord(ResDb, ResDs, ResRec, V);
+        Context.Session.AddRecord(ResDb, ResDs, ResRec, V, UsePaths);
         Result := nil;
         exit;
       end;
 
     Context.Session.ExecLock;
     try
-      A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+      A := Context.Session.GetRecord(ResDb, ResDs, ResRec, UsePaths);
       try
         FieldRef.InsertValue(Context, A, V);
-        Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, A, UsePaths);
       finally
         A.Free;
       end;
@@ -3051,7 +3107,7 @@ begin
   FieldRef := FRef.FFieldRef;
 
   RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
-  V := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+  V := Context.Session.GetRecord(ResDb, ResDs, ResRec, Context.Session.GetOptionPaths);
   if not Assigned(FieldRef) then
     begin
       Result := V;
@@ -3094,19 +3150,21 @@ var
   RecRef : TkvScriptRecordReference;
   FieldRef : AkvScriptFieldReference;
   ResDb, ResDs, ResRec : String;
+  UsePaths : Boolean;
 begin
   RecRef := FRef.FRecordRef;
   FieldRef := FRef.FFieldRef;
+  UsePaths := Context.Session.GetOptionPaths;
 
   RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
   if not Assigned(FieldRef) then
     begin
       Result := TkvBooleanValue.Create(
-          Context.Session.RecordExists(ResDb, ResDs, ResRec));
+          Context.Session.RecordExists(ResDb, ResDs, ResRec, UsePaths));
       exit;
     end;
 
-  V := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+  V := Context.Session.GetRecord(ResDb, ResDs, ResRec, UsePaths);
   try
     R := FieldRef.Exists(Context, V);
   finally
@@ -3149,24 +3207,26 @@ var
   FieldRef : AkvScriptFieldReference;
   A : AkvValue;
   ResDb, ResDs, ResRec : String;
+  UsePaths : Boolean;
 begin
   RecRef := FRef.FRecordRef;
   FieldRef := FRef.FFieldRef;
+  UsePaths := Context.Session.GetOptionPaths;
 
   RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
   if not Assigned(FieldRef) then
     begin
-      Context.Session.DeleteRecord(ResDb, ResDs, ResRec);
+      Context.Session.DeleteRecord(ResDb, ResDs, ResRec, UsePaths);
       Result := nil;
       exit;
     end;
 
   Context.Session.ExecLock;
   try
-    A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+    A := Context.Session.GetRecord(ResDb, ResDs, ResRec, UsePaths);
     try
       FieldRef.DeleteValue(Context, A);
-      Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+      Context.Session.SetRecord(ResDb, ResDs, ResRec, A, UsePaths);
     finally
       A.Free;
     end;
@@ -3208,26 +3268,29 @@ var
   RecRef : TkvScriptRecordReference;
   FieldRef : AkvScriptFieldReference;
   ResDb, ResDs, ResRec : String;
+  UsePaths : Boolean;
 begin
   RecRef := FRef.FRecordRef;
   FieldRef := FRef.FFieldRef;
+  UsePaths := Context.Session.GetOptionPaths;
+
   V := FValue.Evaluate(Context);
   try
     RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
 
     if not Assigned(FieldRef) then
       begin
-        Context.Session.SetRecord(ResDb, ResDs, ResRec, V);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, V, UsePaths);
         Result := nil;
         exit;
       end;
 
     Context.Session.ExecLock;
     try
-      A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+      A := Context.Session.GetRecord(ResDb, ResDs, ResRec, UsePaths);
       try
         FieldRef.UpdateValue(Context, A, V);
-        Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, A, UsePaths);
       finally
         A.Free;
       end;
@@ -3273,26 +3336,28 @@ var
   RecRef : TkvScriptRecordReference;
   FieldRef : AkvScriptFieldReference;
   ResDb, ResDs, ResRec : String;
+  UsePaths : Boolean;
 begin
   RecRef := FRef.FRecordRef;
   FieldRef := FRef.FFieldRef;
+  UsePaths := Context.Session.GetOptionPaths;
   V := FValue.Evaluate(Context);
   try
     RecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
 
     if not Assigned(FieldRef) then
       begin
-        Context.Session.AppendRecord(ResDb, ResDs, ResRec, V);
+        Context.Session.AppendRecord(ResDb, ResDs, ResRec, V, UsePaths);
         Result := nil;
         exit;
       end;
 
     Context.Session.ExecLock;
     try
-      A := Context.Session.GetRecord(ResDb, ResDs, ResRec);
+      A := Context.Session.GetRecord(ResDb, ResDs, ResRec, UsePaths);
       try
         FieldRef.AppendValue(Context, A, V);
-        Context.Session.SetRecord(ResDb, ResDs, ResRec, A);
+        Context.Session.SetRecord(ResDb, ResDs, ResRec, A, UsePaths);
       finally
         A.Free;
       end;
@@ -3741,7 +3806,8 @@ var
   ResDb, ResDs, ResRec : String;
 begin
   FRecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
-  Result := Context.Session.ListOfKeys(ResDb, ResDs, ResRec, FRecurse);
+  Result := Context.Session.ListOfKeys(ResDb, ResDs, ResRec, FRecurse,
+      Context.Session.GetOptionPaths);
 end;
 
 

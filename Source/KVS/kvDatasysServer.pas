@@ -496,39 +496,42 @@ begin
   if KeyCmdS = 'insert' then
     begin
       Val := RequestDict.GetValue('val');
-      Session.AddRecord(DbS, DsS, KeyS, Val);
+      Session.AddRecord(DbS, DsS, KeyS, Val, Session.GetOptionPaths);
     end
   else
   if KeyCmdS = 'update' then
     begin
       Val := RequestDict.GetValue('val');
-      Session.SetRecord(DbS, DsS, KeyS, Val);
+      Session.SetRecord(DbS, DsS, KeyS, Val, Session.GetOptionPaths);
     end
   else
   if KeyCmdS = 'delete' then
-    Session.DeleteRecord(DbS, DsS, KeyS)
+    Session.DeleteRecord(DbS, DsS, KeyS, Session.GetOptionPaths)
   else
   if KeyCmdS = 'select' then
     begin
-      ValSel := Session.GetRecord(DbS, DsS, KeyS);
+      ValSel := Session.GetRecord(DbS, DsS, KeyS, Session.GetOptionPaths);
       ResponseDict.Add('val', ValSel);
     end
   else
   if KeyCmdS = 'append' then
     begin
       Val := RequestDict.GetValue('val');
-      Session.AppendRecord(DbS, DsS, KeyS, Val);
+      Session.AppendRecord(DbS, DsS, KeyS, Val, Session.GetOptionPaths);
     end
   else
   if KeyCmdS = 'exists' then
-    ResponseDict.AddBoolean('val', Session.RecordExists(DbS, DsS, KeyS))
+    ResponseDict.AddBoolean('val', Session.RecordExists(DbS, DsS, KeyS,
+        Session.GetOptionPaths))
   else
   if KeyCmdS = 'mkpath' then
     Session.MakePath(DbS, DsS, KeyS)
   else
   if KeyCmdS = 'listofkeys' then
     begin
-      Val := Session.ListOfKeys(DbS, DsS, KeyS, RequestDict.GetValueAsBoolean('recurse'));
+      Val := Session.ListOfKeys(DbS, DsS, KeyS,
+          RequestDict.GetValueAsBoolean('recurse'),
+          Session.GetOptionPaths);
       ResponseDict.Add('val', Val);
     end
   else

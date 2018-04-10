@@ -98,7 +98,7 @@
             USERS:user\7.email
             USERS:user\7.addresses[0].city
 
-        A record key can also be sub divided to form a path of
+        A record key can optionally be sub divided to form a path of
         folders. A folder is a container that can hold other keys
         and folders:
 
@@ -435,6 +435,30 @@
             SET @a = "a" IN SETOF(["a","b"])
 
 
+        6. List_Of expressions
+
+            LIST_OF_DATABASES returns list of string database names,
+
+              e.g. LIST_OF_DATABASES = ["TESTDB"]
+
+            LIST_OF_DATASETS(databasename) returns a list of string
+            dataset names for a given database,
+
+              e.g. LIST_OF_DATASETS("TESTDB") = ["testds"]
+
+            LIST_OF_KEYS <record path> returns a dictionary with all
+            keys below the specified record path. If it is followed by
+            RECURSE, the keys in lower levels are also retrieved,
+
+              e.g. LIST_OF_KEYS TESTDB:testds\/ =
+                   {a:null,b:{},c:null}
+
+                   LIST_OF_KEYS TESTDB:testds\/ RECURSE =
+                   {a:null,b:{b1:null,b2:null},c:null}
+
+                   LIST_OF_KEYS TESTDB:testds\b RECURSE =
+                   {b1:null,b2:null}
+
 
         STATEMENTS
         ----------
@@ -505,6 +529,28 @@
               ITERATE_NEXT @iter
             END
 
+
+        FOLDERS AND PATHS
+        -----------------
+
+        Keys can optionally contain "paths". Paths consists of key
+        entries called "folders". Folders can be used to group and
+        access multiple entries. Internally, a folder starts a new
+        hash sub-tree.
+
+        Paths are turned off by default, the feature can be turned
+        on in a session with:
+
+            SETPATHS TRUE
+
+        Folders in a path is delimited with a slash "/" character,
+        e.g.
+
+            INSERT 1/22/3 "Hello"
+
+        The root folder can be accessed with a single slash, e.g.
+
+            SELECT /
 
 
         TOOLS
@@ -613,7 +659,8 @@
             <create procedure statement> |
             <return statement> |
             <iterate statement> |
-            <iterate next statement>
+            <iterate next statement> |
+            <setpaths statement>
 
         <use statement> ::= 'USE' <dataset ref>
 
@@ -664,6 +711,8 @@
         <iterate next statement> ::=
             'ITERATE NEXT' <identifier>
 
+        <setpaths statement> ::= 'SETPATHS' <boolean expression>
+
         <expression> ::=
             <literal> |
             ( <term> )+
@@ -693,7 +742,8 @@
             <divide expression> |
             <and expression> |
             <not expression> |
-            <parenthesis expression>
+            <parenthesis expression> |
+            <listofkeys expression>
 
         <boolean literal> ::= 'true' | 'false'
 
@@ -727,6 +777,9 @@
             'ITERATOR_KEY' <identifier> |
             'ITERATOR_VALUE' <identifier>
 
+        <listofkeys expression> ::=
+            'LIST_OF_KEYS' <record ref> [ 'RECURSE' ]
+
         <and expression> ::= <expression> 'AND' <expression>
 
         <multiply expression> ::= <expression> '*' <expression>
@@ -751,12 +804,17 @@
 
 
 
-
-
         AUTHOR
         ------
 
         David J Butler
+
+
+
+        CONTACT
+        -------
+
+        keyvastdb@gmail.com
 
 
 

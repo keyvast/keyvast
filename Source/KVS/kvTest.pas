@@ -306,20 +306,20 @@ begin
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds') = 3);
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds2') = 2);
       // add record
-      Assert(not Ds.RecordExists('testkey'));
+      Assert(not Ds.RecordExists('testkey', False));
       VI.Value := 0;
-      Ds.AddRecord('testkey', VI);
-      Assert(Ds.RecordExists('testkey'));
+      Ds.AddRecord('testkey', VI, False);
+      Assert(Ds.RecordExists('testkey', False));
       // add records
       for I := 1 to TestN1 do
-        Assert(not Ds.RecordExists(IntToStr(I)));
+        Assert(not Ds.RecordExists(IntToStr(I), False));
       {$IFDEF Profile}{$IFDEF MSWINDOWS}
       T1 := GetTickCount;
       {$ENDIF}{$ENDIF}
       for I := 1 to TestN1 do
         begin
           VI.Value := I;
-          Ds.AddRecord(IntToStr(I), VI);
+          Ds.AddRecord(IntToStr(I), VI, False);
         end;
       {$IFDEF Profile}{$IFDEF MSWINDOWS}
       T1 := LongWord(GetTickCount - T1);
@@ -330,13 +330,13 @@ begin
       T1 := GetTickCount;
       {$ENDIF}{$ENDIF}
       for I := 1 to TestN1 do
-        Assert(Ds.RecordExists(IntToStr(I)));
+        Assert(Ds.RecordExists(IntToStr(I), False));
       {$IFDEF Profile}{$IFDEF MSWINDOWS}
       T1 := LongWord(GetTickCount - T1);
       Writeln('Locate:', T1 / 1000:0:2, 's');
       {$ENDIF}{$ENDIF}
       // get records
-      Va := Ds.GetRecord('testkey');
+      Va := Ds.GetRecord('testkey', False);
       Assert(Va.TypeId = KV_Value_TypeId_Integer);
       Assert(Va.AsString = '0');
       Va.Free;
@@ -346,7 +346,7 @@ begin
       for I := 1 to TestN1 do
         begin
           S := IntToStr(I);
-          Va := Ds.GetRecord(S);
+          Va := Ds.GetRecord(S, False);
           Assert(Va.TypeId = KV_Value_TypeId_Integer);
           Assert(Va.AsString = S);
           Va.Free;
@@ -356,13 +356,13 @@ begin
       Writeln('Get:', T1 / 1000:0:2, 's');
       {$ENDIF}{$ENDIF}
       // set record
-      Va := Ds.GetRecord('102');
+      Va := Ds.GetRecord('102', False);
       Assert(Assigned(Va));
       Assert(Va.AsString = '102');
       Va.Free;
       VI.Value := 10;
-      Ds.SetRecord('102', VI);
-      Va := Ds.GetRecord('102');
+      Ds.SetRecord('102', VI, False);
+      Va := Ds.GetRecord('102', False);
       Assert(Assigned(Va));
       Assert(Va.AsString = '10');
       Va.Free;
@@ -370,20 +370,20 @@ begin
       Assert(Ds.GetRecordAsString('102') = '10');
       // delete record
       S := IntToStr(103);
-      Assert(Ds.RecordExists(S));
-      Ds.DeleteRecord(S);
-      Assert(not Ds.RecordExists(S));
+      Assert(Ds.RecordExists(S, False));
+      Ds.DeleteRecord(S, False);
+      Assert(not Ds.RecordExists(S, False));
       // delete records
       for I := 10 to 19 do
         begin
           S := IntToStr(I);
-          Assert(Ds.RecordExists(S));
-          Ds.DeleteRecord(S);
-          Assert(not Ds.RecordExists(S));
+          Assert(Ds.RecordExists(S, False));
+          Ds.DeleteRecord(S, False);
+          Assert(not Ds.RecordExists(S, False));
         end;
       // iterate records
-      Ds.DeleteRecord('testkey');
-      Ds.DeleteRecord('102');
+      Ds.DeleteRecord('testkey', False);
+      Ds.DeleteRecord('102', False);
       Assert(Ds.IterateRecords('', It));
       for I := 1 to TestN1 - 13 do
         begin
@@ -397,24 +397,24 @@ begin
       // long key
       S := '1234567890123456789012345678901234567890';
       VI.Value := 40;
-      Ds.AddRecord(S, VI);
-      Assert(Ds.RecordExists(S));
-      Va := Ds.GetRecord(S);
+      Ds.AddRecord(S, VI, False);
+      Assert(Ds.RecordExists(S, False));
+      Va := Ds.GetRecord(S, False);
       Assert(Va.AsString = '40');
-      Ds.DeleteRecord(S);
-      Assert(not Ds.RecordExists(S));
+      Ds.DeleteRecord(S, False);
+      Assert(not Ds.RecordExists(S, False));
       Va.Free;
       // long key
       S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
            '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
            '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
       VI.Value := 50;
-      Ds.AddRecord(S, VI);
-      Assert(Ds.RecordExists(S));
-      Va := Ds.GetRecord(S);
+      Ds.AddRecord(S, VI, False);
+      Assert(Ds.RecordExists(S, False));
+      Va := Ds.GetRecord(S, False);
       Assert(Va.AsString = '50');
-      Ds.DeleteRecord(S);
-      Assert(not Ds.RecordExists(S));
+      Ds.DeleteRecord(S, False);
+      Assert(not Ds.RecordExists(S, False));
       Va.Free;
       // long key - growing size
       S := '';
@@ -422,27 +422,27 @@ begin
         begin
           S := S + 'x';
           VI.Value := 50;
-          Ds.AddRecord(S, VI);
-          Assert(Ds.RecordExists(S));
-          Va := Ds.GetRecord(S);
+          Ds.AddRecord(S, VI, False);
+          Assert(Ds.RecordExists(S, False));
+          Va := Ds.GetRecord(S, False);
           Assert(Va.AsString = '50');
-          Ds.DeleteRecord(S);
-          Assert(not Ds.RecordExists(S));
+          Ds.DeleteRecord(S, False);
+          Assert(not Ds.RecordExists(S, False));
           Va.Free;
         end;
       // long value
       S := '1234567890123456789012345678901234567890';
       VS.Value := S;
-      Ds.AddRecord('longv', VS);
-      Assert(Ds.RecordExists('longv'));
-      Va := Ds.GetRecord('longv');
+      Ds.AddRecord('longv', VS, False);
+      Assert(Ds.RecordExists('longv', False));
+      Va := Ds.GetRecord('longv', False);
       Assert(Va.AsString = S);
       Va.Free;
       // long value
       S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
       VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
+      Ds.SetRecord('longv', VS, False);
+      Va := Ds.GetRecord('longv', False);
       Assert(Va.AsString = S);
       Va.Free;
       // long value
@@ -457,8 +457,8 @@ begin
            '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
            '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
       VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
+      Ds.SetRecord('longv', VS, False);
+      Va := Ds.GetRecord('longv', False);
       Assert(Va.AsString = S);
       Va.Free;
       // long value - grow and shrink
@@ -466,8 +466,8 @@ begin
       for I := 1 to 4096 do
         begin
           VS.Value := S;
-          Ds.SetRecord('longv', VS);
-          Va := Ds.GetRecord('longv');
+          Ds.SetRecord('longv', VS, False);
+          Va := Ds.GetRecord('longv', False);
           Assert(Va.AsString = S);
           Va.Free;
           S := S + '.';
@@ -476,71 +476,71 @@ begin
         begin
           Delete(S, 1, 1);
           VS.Value := S;
-          Ds.SetRecord('longv', VS);
-          Va := Ds.GetRecord('longv');
+          Ds.SetRecord('longv', VS, False);
+          Va := Ds.GetRecord('longv', False);
           Assert(Va.AsString = S);
           Va.Free;
         end;
       // append short and long
       S := '';
       VS.AsString := '';
-      Ds.AddRecord('append', VS);
+      Ds.AddRecord('append', VS, False);
       for I := 1 to 4096 do
         begin
           VS.AsString := '.';
-          Ds.AppendRecord('append', VS);
-          Va := Ds.GetRecord('append');
+          Ds.AppendRecord('append', VS, False);
+          Va := Ds.GetRecord('append', False);
           S := S + '.';
           Assert(Va.AsString = S);
           Va.Free;
       end;
-      Ds.DeleteRecord('append');
+      Ds.DeleteRecord('append', False);
       // append long and long
       VS.AsString := '';
-      Ds.AddRecord('append', VS);
+      Ds.AddRecord('append', VS, False);
       S := '';
       for I := 1 to 500 do
         S := S + '1234567890';
       VS.AsString := S;
-      Ds.AppendRecord('append', VS);
-      Va := Ds.GetRecord('append');
+      Ds.AppendRecord('append', VS, False);
+      Va := Ds.GetRecord('append', False);
       Assert(Va.AsString = S);
       Va.Free;
       T := '';
       for I := 1 to 500 do
         T := T + '123.567890';
       VS.AsString := T;
-      Ds.AppendRecord('append', VS);
-      Va := Ds.GetRecord('append');
+      Ds.AppendRecord('append', VS, False);
+      Va := Ds.GetRecord('append', False);
       Assert(Va.AsString = S + T);
       Va.Free;
-      Ds.DeleteRecord('append');
+      Ds.DeleteRecord('append', False);
       // append list
       VL := TkvListValue.Create;
-      Ds.AddRecord('append', VL);
+      Ds.AddRecord('append', VL, False);
       VL.Add(TkvIntegerValue.Create(1));
       S := '';
       for I := 1 to 500 do
         begin
-          Ds.AppendRecord('append', VL);
+          Ds.AppendRecord('append', VL, False);
           if I > 1 then
             S := S + ',';
           S := S + '1';
-          Va := Ds.GetRecord('append');
+          Va := Ds.GetRecord('append', False);
           Assert(Va.AsString = '[' + S + ']');
           Va.Free;
         end;
-      Ds.DeleteRecord('append');
+      Ds.DeleteRecord('append', False);
       VL.Free;
       // append dictionary
       VD := TkvDictionaryValue.Create;
-      Ds.AddRecord('append', VD);
+      Ds.AddRecord('append', VD, False);
       for I := 1 to 500 do
         begin
           VD.Clear;
           VD.Add(IntToStr(I), TkvIntegerValue.Create(I));
-          Ds.AppendRecord('append', VD);
-          Va := Ds.GetRecord('append');
+          Ds.AppendRecord('append', VD, False);
+          Va := Ds.GetRecord('append', False);
           for J := 1 to I do
             begin
               Assert(TkvDictionaryValue(Va).Exists(IntToStr(J)));
@@ -1392,6 +1392,10 @@ begin
     MSys.OpenNew;
     Ses := MSys.AddSession;
 
+    // Paths On
+
+    Exec('SETPATHS TRUE');
+
     Exec('CREATE DATABASE TESTDB');
     Exec('CREATE DATASET TESTDB:testds');
     Exec('USE TESTDB:testds');
@@ -1463,13 +1467,13 @@ begin
     Exec('EVAL @a', 'true');
     Exec('SET @b2 = ITERATOR_KEY @a');
     Exec('EVAL @b2 <> @b1', 'true');
-    Exec('EVAL (@b1 = "1/1/1") OR (@b1 = "1/2") OR (@b1 = "1/3/3/3")', 'true');
+    Exec('EVAL (@b2 = "1/1/1") OR (@b2 = "1/2") OR (@b2 = "1/3/3/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b2, 1)) = ITERATOR_VALUE @a', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'true');
     Exec('SET @b3 = ITERATOR_KEY @a');
     Exec('EVAL @b3 <> @b2', 'true');
-    Exec('EVAL (@b1 = "1/1/1") OR (@b1 = "1/2") OR (@b1 = "1/3/3/3")', 'true');
+    Exec('EVAL (@b3 = "1/1/1") OR (@b3 = "1/2") OR (@b3 = "1/3/3/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b3, 1)) = ITERATOR_VALUE @a', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'false');
@@ -1534,6 +1538,60 @@ begin
     Exec('SELECT /.1.2.3', '3');
 
     Exec('DELETE 1');
+
+    // Paths Off
+
+    Exec('SETPATHS FALSE');
+
+    Exec('INSERT 1/2/3 3');
+    Exec('INSERT 1/2/1 1');
+    Exec('INSERT 1/2/2 2');
+
+    Exec('SELECT 1/2/1', '1');
+    Exec('SELECT 1/2/2', '2');
+    Exec('SELECT 1/2/3', '3');
+
+    Exec('SELECT "1/2/3"', '3');
+    Exec('SELECT testds\1/2/3', '3');
+    Exec('SELECT TESTDB:testds\1/2/3', '3');
+
+    Exec('EVAL EXISTS 1/2/1', 'true');
+    Exec('EVAL EXISTS 1/2/2', 'true');
+    Exec('EVAL EXISTS 1/2/3', 'true');
+    Exec('EVAL EXISTS 1/2/4', 'false');
+
+    Exec('EVAL EXISTS 1/2', 'false');
+    Exec('EVAL EXISTS 1', 'false');
+
+    Exec('SELECT /', '{1/2/1:1,1/2/3:3,1/2/2:2}');
+
+    Exec('ITERATE_RECORDS TESTDB:testds @a');
+    Exec('EVAL @a', 'true');
+    Exec('SET @b1 = ITERATOR_KEY @a');
+    Exec('EVAL (@b1 = "1/2/1") OR (@b1 = "1/2/2") OR (@b1 = "1/2/3")', 'true');
+    Exec('EVAL INTEGER(RIGHT(@b1, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'true');
+    Exec('SET @b2 = ITERATOR_KEY @a');
+    Exec('EVAL @b2 <> @b1', 'true');
+    Exec('EVAL (@b2 = "1/2/1") OR (@b2 = "1/2/2") OR (@b2 = "1/2/3")', 'true');
+    Exec('EVAL INTEGER(RIGHT(@b2, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'true');
+    Exec('SET @b3 = ITERATOR_KEY @a');
+    Exec('EVAL @b3 <> @b2', 'true');
+    Exec('EVAL (@b3 = "1/2/1") OR (@b3 = "1/2/2") OR (@b3 = "1/2/3")', 'true');
+    Exec('EVAL INTEGER(RIGHT(@b3, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('ITERATE_NEXT @a');
+    Exec('EVAL @a', 'false');
+
+    Exec('DELETE 1/2/3');
+    Exec('DELETE 1/2/1');
+    Exec('DELETE 1/2/2');
+
+    Exec('EVAL EXISTS 1/2/1', 'false');
+    Exec('EVAL EXISTS 1/2', 'false');
+    Exec('EVAL EXISTS 1', 'false');
 
     Ses.Close;
     MSys.Close;

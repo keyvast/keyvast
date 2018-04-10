@@ -15,6 +15,7 @@
 { 2018/03/04  0.11  In operator }
 { 2018/03/05  0.12  Append statement }
 { 2018/04/08  0.13  LIST_OF_KEYS expression }
+{ 2018/04/09  0.14  SETPATHS statement }
 
 {$INCLUDE kvInclude.inc}
 
@@ -67,6 +68,7 @@ type
       stFloat,
       stKeyString,
 
+      stSETPATHS,
       stUSE,
       stCREATE,
       stDROP,
@@ -165,6 +167,7 @@ type
     function  ParseFactor: AkvScriptExpression;
     function  ParseTerm: AkvScriptExpression;
     function  ParseExpression: AkvScriptExpression;
+    function  ParseSetPathsStatement: AkvScriptStatement;
     function  ParseUseStatement: TkvScriptUseStatement;
     function  ParseCreateDatabaseStatement: AkvScriptStatement;
     function  ParseCreateDatasetStatement: AkvScriptStatement;
@@ -209,7 +212,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 40;
+  kvScriptKeywordCount = 41;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -217,6 +220,7 @@ const
       'DATASET',
       'PROCEDURE',
       'RETURN',
+      'SETPATHS',
       'USE',
       'INSERT',
       'DELETE',
@@ -259,6 +263,7 @@ const
       stDATASET,
       stPROCEDURE,
       stRETURN,
+      stSETPATHS,
       stUSE,
       stINSERT,
       stDELETE,
@@ -1244,6 +1249,16 @@ begin
   Result := ParseTerm;
 end;
 
+function TkvScriptParser.ParseSetPathsStatement: AkvScriptStatement;
+var
+  ValExpr : AkvScriptExpression;
+begin
+  Assert(FToken = stSETPATHS);
+  GetNextToken;
+  ValExpr := ParseExpression;
+  Result := TkvScriptSetPathsStatement.Create(ValExpr);
+end;
+
 function TkvScriptParser.ParseUseStatement: TkvScriptUseStatement;
 var
   DbName : String;
@@ -1717,6 +1732,7 @@ end;
 function TkvScriptParser.ParseStatement: AkvScriptStatement;
 begin
   case FToken of
+    stSETPATHS        : Result := ParseSetPathsStatement;
     stUSE             : Result := ParseUseStatement;
     stCREATE          : Result := ParseCreateStatement;
     stDROP            : Result := ParseDropStatement;
