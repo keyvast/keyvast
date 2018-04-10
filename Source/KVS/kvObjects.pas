@@ -203,6 +203,7 @@ type
     function  IteratorHasRecord(const Iterator: TkvDatasetIterator): Boolean;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String;
     function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
+    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
   end;
 
 
@@ -423,6 +424,7 @@ type
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String;
     function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
+    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
   end;
 
 
@@ -2008,6 +2010,20 @@ begin
   Result := HashRecToValue(Iterator.HashRec);
 end;
 
+function kvHashRecTimestamp(const HashRec: TkvHashFileRecord): Int64;
+var
+  P : PUInt64;
+begin
+  P := @HashRec.Timestamp;
+  Result := P^;
+end;
+
+function TkvDataset.IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
+begin
+  Assert(Iterator.Dataset = self);
+  Result := kvHashRecTimestamp(Iterator.HashRec);
+end;
+
 
 
 { TkvDatasetList }
@@ -2836,6 +2852,13 @@ begin
   VerifyOpen;
   Assert(Assigned(Iterator.Dataset));
   Result := Iterator.Dataset.IteratorGetValue(Iterator);
+end;
+
+function TkvSystem.IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
+begin
+  VerifyOpen;
+  Assert(Assigned(Iterator.Dataset));
+  Result := Iterator.Dataset.IteratorGetTimestamp(Iterator);
 end;
 
 

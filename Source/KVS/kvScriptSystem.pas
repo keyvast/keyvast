@@ -117,6 +117,7 @@ type
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; override;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; override;
     function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue; override;
+    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64; override;
 
     function  ExecScript(const S: String): AkvValue; override;
 
@@ -284,6 +285,7 @@ type
     function  IterateNextRecord(const Session: TkvScriptSession; var Iterator: TkvDatasetIterator): Boolean;
     function  IteratorGetKey(const Session: TkvScriptSession; const Iterator: TkvDatasetIterator): String;
     function  IteratorGetValue(const Session: TkvScriptSession; const Iterator: TkvDatasetIterator): AkvValue;
+    function  IteratorGetTimestamp(const Session: TkvScriptSession; const Iterator: TkvDatasetIterator): Int64;
 
     procedure CreateStoredProcedure(const Session: TkvScriptSession;
               const DatabaseName, ProcedureName, Script: String);
@@ -606,6 +608,11 @@ end;
 function TkvScriptSession.IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
 begin
   Result := FSystem.IteratorGetValue(self, Iterator);
+end;
+
+function TkvScriptSession.IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
+begin
+  Result := FSystem.IteratorGetTimestamp(self, Iterator);
 end;
 
 function TkvScriptSession.ParseScript(const Script: String): AkvScriptNode;
@@ -1454,6 +1461,17 @@ begin
   ExecLock;
   try
     Result := FSystem.IteratorGetValue(Iterator);
+  finally
+    ExecUnlock;
+  end;
+end;
+
+function TkvScriptSystem.IteratorGetTimestamp(const Session: TkvScriptSession;
+         const Iterator: TkvDatasetIterator): Int64;
+begin
+  ExecLock;
+  try
+    Result := FSystem.IteratorGetTimestamp(Iterator);
   finally
     ExecUnlock;
   end;

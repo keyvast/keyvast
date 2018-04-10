@@ -884,6 +884,20 @@ type
     function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
   end;
 
+  { Iterator Timestamp expression }
+
+  TkvScriptIteratorTimestampExpression = class(AkvScriptExpression)
+  private
+    FIdentifier : String;
+
+  public
+    constructor Create(const Identifier: String);
+
+    function  Duplicate: AkvScriptNode; override;
+    function  GetAsString: String; override;
+    function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
   { List Of Keys expression }
 
   TkvScriptListOfKeysExpression = class(AkvScriptExpression)
@@ -3764,6 +3778,42 @@ begin
   ItV := TkvDatasetIteratorValue(It);
   Val := Context.Session.IteratorGetValue(ItV.FIterator);
   Result := Val;
+end;
+
+
+
+{ TkvScriptIteratorTimestampExpression }
+
+constructor TkvScriptIteratorTimestampExpression.Create(const Identifier: String);
+begin
+  Assert(Identifier <> '');
+
+  inherited Create;
+  FIdentifier := Identifier;
+end;
+
+function TkvScriptIteratorTimestampExpression.GetAsString: String;
+begin
+  Result := 'ITERATOR_TIMESTAMP ' + FIdentifier;
+end;
+
+function TkvScriptIteratorTimestampExpression.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptIteratorTimestampExpression.Create(FIdentifier);
+end;
+
+function TkvScriptIteratorTimestampExpression.Evaluate(const Context: TkvScriptContext): AkvValue;
+var
+  It : TObject;
+  ItV : TkvDatasetIteratorValue;
+  Val : Int64;
+begin
+  It := Context.Scope.GetIdentifier(FIdentifier);
+  if not (It is TkvDatasetIteratorValue) then
+    raise EkvScriptNode.Create('Not an iterator');
+  ItV := TkvDatasetIteratorValue(It);
+  Val := Context.Session.IteratorGetTimestamp(ItV.FIterator);
+  Result := TkvIntegerValue.Create(Val);
 end;
 
 

@@ -85,6 +85,7 @@ type
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; virtual; abstract;
     function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue; virtual; abstract;
+    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64; virtual; abstract;
 
     function  ExecScript(const S: String): AkvValue; virtual; abstract;
 

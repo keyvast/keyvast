@@ -1463,18 +1463,21 @@ begin
     Exec('SET @b1 = ITERATOR_KEY @a');
     Exec('EVAL (@b1 = "1/1/1") OR (@b1 = "1/2") OR (@b1 = "1/3/3/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b1, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL ITERATOR_TIMESTAMP @a <> 0', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'true');
     Exec('SET @b2 = ITERATOR_KEY @a');
     Exec('EVAL @b2 <> @b1', 'true');
     Exec('EVAL (@b2 = "1/1/1") OR (@b2 = "1/2") OR (@b2 = "1/3/3/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b2, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL ITERATOR_TIMESTAMP @a <> 0', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'true');
     Exec('SET @b3 = ITERATOR_KEY @a');
     Exec('EVAL @b3 <> @b2', 'true');
     Exec('EVAL (@b3 = "1/1/1") OR (@b3 = "1/2") OR (@b3 = "1/3/3/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b3, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL ITERATOR_TIMESTAMP @a <> 0', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'false');
 
@@ -1688,10 +1691,12 @@ begin
         ValA := Client.IterateGetValue(Handle);
         Assert(Key = ValA.AsString);
         ValA.Free;
+        Assert(Client.IterateGetTimestamp(Handle) <> 0);
         Assert(Client.IterateNext(Handle, Key));
         ValA := Client.IterateGetValue(Handle);
         Assert(Key = ValA.AsString);
         ValA.Free;
+        Assert(Client.IterateGetTimestamp(Handle) <> 0);
         Assert(not Client.IterateNext(Handle, Key));
 
         ValA := Client.ListOfKeys('TESTDB', 'testds', '', True);

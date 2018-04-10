@@ -86,6 +86,10 @@ type
               const Session: TkvScriptSession;
               const RequestDict: TkvDictionaryValue;
               const ResponseDict: TkvDictionaryValue);
+    procedure ClientBinIterateGetTimestampCommand(const AContext: TIdContext;
+              const Session: TkvScriptSession;
+              const RequestDict: TkvDictionaryValue;
+              const ResponseDict: TkvDictionaryValue);
     procedure ClientBinIterateFinaliseCommand(const AContext: TIdContext;
               const Session: TkvScriptSession;
               const RequestDict: TkvDictionaryValue;
@@ -422,6 +426,12 @@ begin
           RespType := 'iterate_getvalue_response';
         end
       else
+      if RequestType = 'iterate_gettimestamp' then
+        begin
+          ClientBinIterateGetTimestampCommand(AContext, Session, RequestDict, ResponseDict);
+          RespType := 'iterate_gettimestamp_response';
+        end
+      else
       if RequestType = 'iterate' then
         begin
           ClientBinIterateCommand(AContext, Session, RequestDict, ResponseDict);
@@ -626,6 +636,21 @@ begin
   ValidateIterator(Iter);
   ItVal := Session.IteratorGetValue(Iter^.Iter);
   ResponseDict.Add('value', ItVal);
+end;
+
+procedure TkvDatasysServer.ClientBinIterateGetTimestampCommand(const AContext: TIdContext;
+          const Session: TkvScriptSession; const RequestDict: TkvDictionaryValue;
+          const ResponseDict: TkvDictionaryValue);
+var
+  HandleInt : Int64;
+  Iter : PkvDatasysServerDatasetIterator;
+  ItVal : Int64;
+begin
+  HandleInt := RequestDict.GetValueAsInteger('handle');
+  Iter := Pointer(HandleInt);
+  ValidateIterator(Iter);
+  ItVal := Session.IteratorGetTimestamp(Iter^.Iter);
+  ResponseDict.AddInteger('value', ItVal);
 end;
 
 procedure TkvDatasysServer.ClientBinIterateFinaliseCommand(const AContext: TIdContext;

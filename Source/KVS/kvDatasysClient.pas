@@ -79,6 +79,7 @@ type
               var Handle: Int64; var Key: String): Boolean;
     function  IterateNext(const Handle: Int64; var Key: String): Boolean;
     function  IterateGetValue(const Handle: Int64): AkvValue;
+    function  IterateGetTimestamp(const Handle: Int64): Int64;
     procedure IterateFin(const Handle: Int64);
   end;
 
@@ -604,6 +605,27 @@ begin
   try
     CheckResponseError(Resp);
     Result := AkvValue(Resp.ReleaseKey('value'));
+  finally
+    Resp.Free;
+  end;
+end;
+
+function TkvDatasysClient.IterateGetTimestamp(const Handle: Int64): Int64;
+var
+  Req : TkvDictionaryValue;
+  Resp : TkvDictionaryValue;
+begin
+  Req := TkvDictionaryValue.Create;
+  try
+    Req.AddString('request_type', 'iterate_gettimestamp');
+    Req.AddInteger('handle', Handle);
+    Resp := ExecBinCommand(Req);
+  finally
+    Req.Free;
+  end;
+  try
+    CheckResponseError(Resp);
+    Result := Resp.GetValueAsInteger('value');
   finally
     Resp.Free;
   end;

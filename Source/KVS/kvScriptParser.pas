@@ -16,6 +16,7 @@
 { 2018/03/05  0.12  Append statement }
 { 2018/04/08  0.13  LIST_OF_KEYS expression }
 { 2018/04/09  0.14  SETPATHS statement }
+{ 2018/04/10  0.15  ITERATOR_TIMESTAMP expression }
 
 {$INCLUDE kvInclude.inc}
 
@@ -102,6 +103,7 @@ type
       stITERATE_NEXT,
       stITERATOR_KEY,
       stITERATOR_VALUE,
+      stITERATOR_TIMESTAMP,
 
       stNULL,
       stTRUE,
@@ -161,6 +163,7 @@ type
     function  ParseListOfDatasetsExpression: AkvScriptExpression;
     function  ParseIteratorKeyExpression: AkvScriptExpression;
     function  ParseIteratorValueExpression: AkvScriptExpression;
+    function  ParseIteratorTimestampExpression: AkvScriptExpression;
     function  ParseListOfKeysExpression: AkvScriptExpression;
     function  ParseUniqueIdExpression: AkvScriptExpression;
     function  ParseValue: AkvScriptValue;
@@ -212,7 +215,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 41;
+  kvScriptKeywordCount = 42;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -241,6 +244,7 @@ const
       'ITERATE_NEXT',
       'ITERATOR_KEY',
       'ITERATOR_VALUE',
+      'ITERATOR_TIMESTAMP',
       'NULL',
       'TRUE',
       'FALSE',
@@ -284,6 +288,7 @@ const
       stITERATE_NEXT,
       stITERATOR_KEY,
       stITERATOR_VALUE,
+      stITERATOR_TIMESTAMP,
       stNULL,
       stTRUE,
       stFALSE,
@@ -1042,6 +1047,16 @@ begin
   Result := TkvScriptIteratorValueExpression.Create(Iden);
 end;
 
+function TkvScriptParser.ParseIteratorTimestampExpression: AkvScriptExpression;
+var
+  Iden : String;
+begin
+  Assert(FToken = stITERATOR_TIMESTAMP);
+  GetNextToken;
+  Iden := ExpectIdentifier;
+  Result := TkvScriptIteratorTimestampExpression.Create(Iden);
+end;
+
 function TkvScriptParser.ParseListOfKeysExpression: AkvScriptExpression;
 var
   RecRef : TkvScriptRecordReference;
@@ -1178,6 +1193,8 @@ begin
         Ex := ParseIteratorKeyExpression;
       stITERATOR_VALUE :
         Ex := ParseIteratorValueExpression;
+      stITERATOR_TIMESTAMP :
+        Ex := ParseIteratorTimestampExpression;
       stLIST_OF_KEYS :
         Ex := ParseListOfKeysExpression;
     end;
