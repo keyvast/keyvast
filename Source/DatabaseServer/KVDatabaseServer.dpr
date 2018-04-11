@@ -170,7 +170,7 @@ end;
 
 procedure PrintTitle;
 begin
-  Writeln('KeyVast Database Server 1.40');
+  Writeln('KeyVast Database Server 1.50');
 end;
 
 procedure PrintHelp;

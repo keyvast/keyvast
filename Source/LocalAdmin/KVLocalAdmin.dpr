@@ -104,7 +104,7 @@ end;
 
 procedure PrintTitle;
 begin
-  Writeln('KeyVast Local Admin 1.40');
+  Writeln('KeyVast Local Admin 1.50');
 end;
 
 procedure PrintHelp;
