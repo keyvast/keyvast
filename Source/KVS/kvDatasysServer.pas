@@ -182,6 +182,10 @@ begin
   Log('#', 'Stopped');
 end;
 
+{$IFDEF LINUX}
+{$DEFINE IdContextUseDataObject}
+{$ENDIF}
+
 procedure TkvDatasysServer.TcpServerConnect(AContext: TIdContext);
 var
   Ses : TkvScriptSession;

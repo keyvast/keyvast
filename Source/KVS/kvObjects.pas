@@ -119,10 +119,9 @@ type
     function  HashRecToKey(const HashRec: TkvHashFileRecord): String;
     function  HashRecToValue(const HashRec: TkvHashFileRecord): AkvValue;
 
-    procedure RecursiveGetChildRecords(const BaseIdx: Word64;
-              const D: TkvDictionaryValue);
-    function  RecursiveGetFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
-    function  RecursiveGetAllRecords: AkvValue;
+    procedure GetAllChildRecords(const BaseIdx: Word64; const D: TkvDictionaryValue);
+    function  GetAllFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
+    function  GetAllRecords: AkvValue;
 
     procedure HashRecAppendValue_Rewrite(var HashRec: TkvHashFileRecord;
               const Value: AkvValue);
@@ -388,35 +387,49 @@ type
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64;
 
     function  DatasetExists(const DatabaseName, DatasetName: String): Boolean;
-    function  IterateFirstDataset(const DatabaseName: String; var Iterator: TkvDatasetListIterator): Boolean;
+    function  IterateFirstDataset(const DatabaseName: String;
+              var Iterator: TkvDatasetListIterator): Boolean;
     function  IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
     function  CreateDataset(const DatabaseName, DatasetName: String): TkvDataset;
     function  RequireDatasetByName(const DatabaseName, DatasetName: String): TkvDataset;
     procedure DropDataset(const DatabaseName, DatasetName: String);
     function  AllocateDatasetUniqueId(const DatabaseName, DatasetName: String): UInt64;
 
-    procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
-    procedure AddRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
+    procedure AddRecord(const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue; const UsePaths: Boolean); overload;
+    procedure AddRecord(const Dataset: TkvDataset; const Key: String;
+              const Value: AkvValue; const UsePaths: Boolean); overload;
 
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); overload;
     procedure MakePath(const Dataset: TkvDataset; const KeyPath: String); overload;
 
-    function  RecordExists(const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean): Boolean; overload;
-    function  RecordExists(const Dataset: TkvDataset; const Key: String; const UsePaths: Boolean): Boolean; overload;
+    function  RecordExists(const DatabaseName, DatasetName, Key: String;
+              const UsePaths: Boolean): Boolean; overload;
+    function  RecordExists(const Dataset: TkvDataset; const Key: String;
+              const UsePaths: Boolean): Boolean; overload;
 
-    function  GetRecord(const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean): AkvValue; overload;
-    function  GetRecord(const Dataset: TkvDataset; const Key: String; const UsePaths: Boolean): AkvValue; overload;
+    function  GetRecord(const DatabaseName, DatasetName, Key: String;
+              const UsePaths: Boolean): AkvValue; overload;
+    function  GetRecord(const Dataset: TkvDataset; const Key: String;
+              const UsePaths: Boolean): AkvValue; overload;
 
-    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean; const UsePaths: Boolean): AkvValue;
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
+              const Recurse: Boolean; const UsePaths: Boolean): AkvValue;
 
-    procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
-    procedure SetRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
+    procedure SetRecord(const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue; const UsePaths: Boolean); overload;
+    procedure SetRecord(const Dataset: TkvDataset; const Key: String;
+              const Value: AkvValue; const UsePaths: Boolean); overload;
 
-    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
-    procedure AppendRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
+    procedure AppendRecord(const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue; const UsePaths: Boolean); overload;
+    procedure AppendRecord(const Dataset: TkvDataset; const Key: String;
+              const Value: AkvValue; const UsePaths: Boolean); overload;
 
-    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean); overload;
-    procedure DeleteRecord(const Dataset: TkvDataset; const Key: String; const UsePaths: Boolean); overload;
+    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String;
+              const UsePaths: Boolean); overload;
+    procedure DeleteRecord(const Dataset: TkvDataset; const Key: String;
+              const UsePaths: Boolean); overload;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;
@@ -848,7 +861,8 @@ begin
   until Fin;
 end;
 
-procedure TkvDataset.AddRecord(const Key: String; const Value: AkvValue; const UsePaths: Boolean);
+procedure TkvDataset.AddRecord(const Key: String; const Value: AkvValue;
+          const UsePaths: Boolean);
 var
   KeyLen : Integer;
   BaseIdx : Word64;
@@ -1203,7 +1217,7 @@ begin
   end;
 end;
 
-procedure TkvDataset.RecursiveGetChildRecords(const BaseIdx: Word64;
+procedure TkvDataset.GetAllChildRecords(const BaseIdx: Word64;
           const D: TkvDictionaryValue);
 var
   I : Integer;
@@ -1219,12 +1233,12 @@ begin
       case ChildRec.RecordType of
         hfrtEmpty : ;
         hfrtParentSlot :
-          RecursiveGetChildRecords(ChildRec.ChildSlotRecordIndex, D);
+          GetAllChildRecords(ChildRec.ChildSlotRecordIndex, D);
         hfrtKeyValue :
           begin
             Key := HashRecToKey(ChildRec);
             if ChildRec.ValueType = hfrvtFolder then
-              Value := RecursiveGetFolderRecords(ChildRec)
+              Value := GetAllFolderRecords(ChildRec)
             else
               Value := HashRecToValue(ChildRec);
             D.Add(Key, Value);
@@ -1233,24 +1247,24 @@ begin
           begin
             Key := HashRecToKey(ChildRec);
             if ChildRec.ValueType = hfrvtFolder then
-              Value := RecursiveGetFolderRecords(ChildRec)
+              Value := GetAllFolderRecords(ChildRec)
             else
               Value := HashRecToValue(ChildRec);
             D.Add(Key, Value);
-            RecursiveGetChildRecords(ChildRec.ChildSlotRecordIndex, D);
+            GetAllChildRecords(ChildRec.ChildSlotRecordIndex, D);
           end;
       end;
     end;
 end;
 
-function TkvDataset.RecursiveGetFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
+function TkvDataset.GetAllFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
 var
   D : TkvDictionaryValue;
 begin
   Assert(HashRec.ValueType = hfrvtFolder);
   D := TkvDictionaryValue.Create;
   try
-    RecursiveGetChildRecords(HashRec.ValueFolderBaseIndex, D);
+    GetAllChildRecords(HashRec.ValueFolderBaseIndex, D);
   except
     D.Free;
     raise;
@@ -1258,13 +1272,13 @@ begin
   Result := D;
 end;
 
-function TkvDataset.RecursiveGetAllRecords: AkvValue;
+function TkvDataset.GetAllRecords: AkvValue;
 var
   D : TkvDictionaryValue;
 begin
   D := TkvDictionaryValue.Create;
   try
-    RecursiveGetChildRecords(0, D);
+    GetAllChildRecords(0, D);
   except
     D.Free;
     raise;
@@ -1280,13 +1294,13 @@ begin
   if Key = '' then
     raise EkvObject.Create('Invalid key');
   if Key = '/' then
-    Result := RecursiveGetAllRecords
+    Result := GetAllRecords
   else
     begin
       if not LocateRecord(Key, HashRecIdx, HashRec, UsePaths) then
         raise EkvObject.CreateFmt('Key not found: %s', [Key]);
       if HashRec.ValueType = hfrvtFolder then
-        Result := RecursiveGetFolderRecords(HashRec)
+        Result := GetAllFolderRecords(HashRec)
       else
         Result := HashRecToValue(HashRec);
     end;
@@ -1459,7 +1473,8 @@ begin
     end;
 end;
 
-procedure TkvDataset.SetRecord(const Key: String; const Value: AkvValue; const UsePaths: Boolean);
+procedure TkvDataset.SetRecord(const Key: String; const Value: AkvValue;
+          const UsePaths: Boolean);
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
@@ -1775,7 +1790,8 @@ begin
   end;
 end;
 
-procedure TkvDataset.InternalDeleteRecord(const HashRecIdx: Word64; var HashRec: TkvHashFileRecord);
+procedure TkvDataset.InternalDeleteRecord(const HashRecIdx: Word64;
+          var HashRec: TkvHashFileRecord);
 var
   SltI : Word32;
   RecI : Word64;
@@ -1938,7 +1954,8 @@ begin
   until false;
 end;
 
-function TkvDataset.IterateRecords(const Path: String; out Iterator: TkvDatasetIterator): Boolean;
+function TkvDataset.IterateRecords(const Path: String;
+         out Iterator: TkvDatasetIterator): Boolean;
 var
   E : PkvDatasetIteratorStackEntry;
   BaseRecIdx : Word64;
@@ -2634,7 +2651,8 @@ begin
   Result := Db.DatasetExists(DatasetName);
 end;
 
-function TkvSystem.IterateFirstDataset(const DatabaseName: String; var Iterator: TkvDatasetListIterator): Boolean;
+function TkvSystem.IterateFirstDataset(const DatabaseName: String;
+         var Iterator: TkvDatasetListIterator): Boolean;
 var
   Db : TkvDatabase;
 begin
@@ -2783,13 +2801,15 @@ begin
   Result := RequireDatasetByName(DatabaseName, DatasetName).ListOfKeys(KeyPath, Recurse, UsePaths);
 end;
 
-procedure TkvSystem.SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean);
+procedure TkvSystem.SetRecord(const DatabaseName, DatasetName, Key: String;
+          const Value: AkvValue; const UsePaths: Boolean);
 begin
   VerifyOpen;
   RequireDatasetByName(DatabaseName, DatasetName).SetRecord(Key, Value, UsePaths);
 end;
 
-procedure TkvSystem.SetRecord(const Dataset: TkvDataset; const Key: String; const Value: AkvValue; const UsePaths: Boolean);
+procedure TkvSystem.SetRecord(const Dataset: TkvDataset; const Key: String;
+          const Value: AkvValue; const UsePaths: Boolean);
 begin
   VerifyOpen;
   Assert(Assigned(Dataset));

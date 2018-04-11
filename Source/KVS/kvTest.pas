@@ -1575,6 +1575,9 @@ begin
 
     Exec('SELECT /', '{1/2/1:1,1/2/3:3,1/2/2:2}');
 
+    Exec('EVAL LIST_OF_KEYS /', '{1/2/1:null,1/2/3:null,1/2/2:null}');
+    Exec('EVAL LIST_OF_KEYS / RECURSE', '{1/2/1:null,1/2/3:null,1/2/2:null}');
+
     Exec('ITERATE_RECORDS TESTDB:testds @a');
     Exec('EVAL @a', 'true');
     Exec('SET @b1 = ITERATOR_KEY @a');
