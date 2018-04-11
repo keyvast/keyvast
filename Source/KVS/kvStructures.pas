@@ -12,6 +12,8 @@
 {                   Change hash file record structure for longer keys }
 { 2018/04/08  0.07  Reorganise hash file record structure (breaks
 {                   compatibility) and add Timestamp field }
+{ 2018/04/11  0.08  Change hash record and block record to handle 64 bit }
+{                   (breaks compatibility) }
 
 {$INCLUDE kvInclude.inc}
 
@@ -25,8 +27,9 @@ uses
 
 
 type
-  Word32 = FixedUInt;
   Word16 = Word;
+  Word32 = FixedUInt;
+  Word64 = UInt64;
 
   EkvStructure = class(Exception);
 
@@ -319,19 +322,19 @@ type
     Magic                 : Word16;                 // KV_HashFileRecord_Magic
     Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
+    Reserved              : Word32;
     Timestamp             : TDateTime;              // Timestamp of last change for Key/Value record types
-    Reserved_1            : UInt64;
     ChildSlotRecordIndex  : Word32;                 // Used by ParentSlot and HashCollision
     KeyHash               : UInt64;                 // kvLevelHash of Key
     KeyLength             : Word16;
     KeyShort              : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
-    KeyLongChainIndex     : Word32;
+    KeyLongChainIndex     : Word64;
     ValueType             : TkvHashFileRecordValueType;
     ValueTypeId           : Byte;
     ValueSize             : Word32;
     case Integer of
       0 : (ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte);
-      1 : (ValueLongChainIndex  : Word32);
+      1 : (ValueLongChainIndex  : Word64);
       2 : (ValueFolderBaseIndex : Word32);
   end;
 
@@ -361,7 +364,7 @@ procedure kvInitHashFileRecord(
 const
   KV_BlobFile_MinRecordSize      = 128;
   KV_BlobFile_RecordSizeMultiple = 128;
-  KV_BlobFile_InvalidIndex       = $FFFFFFFF;
+  KV_BlobFile_InvalidIndex       = Word64($FFFFFFFFFFFFFFFF);
 
 
 
@@ -377,10 +380,10 @@ type
     Version         : Word32;        // KV_BlobFileHeader_Version
     HeaderSize      : Word32;        // KV_BlobFile_HeaderSize
     RecordSize      : Word32;
-    RecordCount     : Word32;
-    FreeRecordIndex : Word32;        // Linked list to free records
-    FreeRecordCount : Word32;
-    Reserved        : array[0..995] of Byte;
+    RecordCount     : Word64;
+    FreeRecordIndex : Word64;        // Linked list to free records
+    FreeRecordCount : Word64;
+    Reserved        : array[0..983] of Byte;
   end;
   PkvBlobFileHeader = ^TkvBlobFileHeader;
 
@@ -405,17 +408,17 @@ type
   TkvBlobFileRecordHeader = packed record
     Magic           : Word;        // KV_BlobFileRecordHeader_Magic
     Version         : Word;        // KV_BlobFileRecordHeader_Version
-    NextRecordIndex : Word32;      // Next record in chain
+    NextRecordIndex : Word64;      // Next record in chain
     case Integer of
-      0 : (Reserved        : array[0..7] of Byte);
       // Only used by first record header in a chain
-      1 : (LastRecordIndex : Word32;
+      0 : (LastRecordIndex : Word64;
            ChainSize       : Word32);
+      1 : (Reserved        : array[0..11] of Byte);
   end;
   PkvBlobFileRecordHeader = ^TkvBlobFileRecordHeader;
 
 const
-  KV_BlobFile_RecordHeaderSize = SizeOf(TkvBlobFileRecordHeader); // 16 bytes
+  KV_BlobFile_RecordHeaderSize = SizeOf(TkvBlobFileRecordHeader); // 24 bytes
 
 procedure kvInitBlobFileRecordHeader(
           out Header: TkvBlobFileRecordHeader);

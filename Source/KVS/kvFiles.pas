@@ -10,6 +10,7 @@
 { 2018/02/18  0.05  Hash file cache }
 { 2018/03/05  0.06  Blob file append chain }
 { 2018/03/14  0.07  Blob file truncate }
+{ 2018/04/11  0.08  Blob file 64-bit indexes }
 
 {$INCLUDE kvInclude.inc}
 
@@ -238,10 +239,10 @@ type
     procedure InitHeader(const RecordSize: Word32);
     procedure LoadHeader;
     procedure SaveHeader;
-    procedure SeekRecord(const Idx: Word32);
-    procedure LoadRecordHeader(const Idx: Word32; var Hdr: TkvBlobFileRecordHeader);
-    procedure SaveRecordHeader(const Idx: Word32; const Hdr: TkvBlobFileRecordHeader);
-    function  AllocateRecord(var RecHdr: TkvBlobFileRecordHeader): Word32;
+    procedure SeekRecord(const Idx: Word64);
+    procedure LoadRecordHeader(const Idx: Word64; var Hdr: TkvBlobFileRecordHeader);
+    procedure SaveRecordHeader(const Idx: Word64; const Hdr: TkvBlobFileRecordHeader);
+    function  AllocateRecord(var RecHdr: TkvBlobFileRecordHeader): Word64;
 
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName, BlobName: String);
@@ -260,14 +261,14 @@ type
     function  GetRecordCount: Integer;
     function  GetFreeRecordCount: Integer;
 
-    function  CreateChain(const Buf; const BufSize: Integer): Word32;
-    procedure ReadChain(const RecordIndex: Word32; var Buf; const BufSize: Integer);
-    procedure ReleaseChain(const RecordIndex: Word32);
-    procedure WriteChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
-    function  GetChainSize(const RecordIndex: Word32): Integer;
-    procedure AppendChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
-    procedure WriteChainStart(const RecordIndex: Word32; const Buf; const BufSize: Integer);
-    procedure TruncateChainAt(const RecordIndex: Word32; const Size: Integer);
+    function  CreateChain(const Buf; const BufSize: Integer): Word64;
+    procedure ReadChain(const RecordIndex: Word64; var Buf; const BufSize: Integer);
+    procedure ReleaseChain(const RecordIndex: Word64);
+    procedure WriteChain(const RecordIndex: Word64; const Buf; const BufSize: Integer);
+    function  GetChainSize(const RecordIndex: Word64): Integer;
+    procedure AppendChain(const RecordIndex: Word64; const Buf; const BufSize: Integer);
+    procedure WriteChainStart(const RecordIndex: Word64; const Buf; const BufSize: Integer);
+    procedure TruncateChainAt(const RecordIndex: Word64; const Size: Integer);
   end;
 
 
@@ -1103,16 +1104,16 @@ begin
   FFile.WriteBuffer(FFileHeader, KV_BlobFile_HeaderSize);
 end;
 
-procedure TkvBlobFile.SeekRecord(const Idx: Word32);
+procedure TkvBlobFile.SeekRecord(const Idx: Word64);
 begin
   Assert(Assigned(FFile));
   Assert(FFileHeader.RecordSize > 0);
 
   FFile.Position := KV_BlobFile_HeaderSize +
-                    UInt64(Idx) * FFileHeader.RecordSize;
+                    Idx * FFileHeader.RecordSize;
 end;
 
-procedure TkvBlobFile.LoadRecordHeader(const Idx: Word32; var Hdr: TkvBlobFileRecordHeader);
+procedure TkvBlobFile.LoadRecordHeader(const Idx: Word64; var Hdr: TkvBlobFileRecordHeader);
 begin
   SeekRecord(Idx);
   FFile.ReadBuffer(Hdr, KV_BlobFile_RecordHeaderSize);
@@ -1121,7 +1122,7 @@ begin
     raise EkvFile.Create('Blob file corrupt: Invalid record header');
 end;
 
-procedure TkvBlobFile.SaveRecordHeader(const Idx: Word32; const Hdr: TkvBlobFileRecordHeader);
+procedure TkvBlobFile.SaveRecordHeader(const Idx: Word64; const Hdr: TkvBlobFileRecordHeader);
 begin
   SeekRecord(Idx);
   FFile.WriteBuffer(Hdr, KV_BlobFile_RecordHeaderSize);
@@ -1160,9 +1161,9 @@ begin
   Result := FFileHeader.FreeRecordCount;
 end;
 
-function TkvBlobFile.AllocateRecord(var RecHdr: TkvBlobFileRecordHeader): Word32;
+function TkvBlobFile.AllocateRecord(var RecHdr: TkvBlobFileRecordHeader): Word64;
 var
-  RecIdx : Word32;
+  RecIdx : Word64;
 begin
   Assert(Assigned(FFile));
 
@@ -1184,19 +1185,20 @@ begin
   Result := RecIdx;
 end;
 
-function TkvBlobFile.CreateChain(const Buf; const BufSize: Integer): Word32;
+// Returns a RecordIndex that can be used to access this chain again
+function TkvBlobFile.CreateChain(const Buf; const BufSize: Integer): Word64;
 var
   RecDataSize : Integer;
-  FirstRecIdx : Word32;
+  FirstRecIdx : Word64;
   FirstRecHdr : TkvBlobFileRecordHeader;
   Remain : Integer;
   RecCnt : Integer;
   DataP : PByte;
-  RecIdx : Word32;
+  RecIdx : Word64;
   RecHdr : TkvBlobFileRecordHeader;
   DataSize : Integer;
   PrevRecHdr : TkvBlobFileRecordHeader;
-  PrevRecIdx : Word32;
+  PrevRecIdx : Word64;
 begin
   Assert(Assigned(FFile));
   if BufSize <= 0 then
@@ -1254,11 +1256,11 @@ begin
   Result := FirstRecIdx;
 end;
 
-procedure TkvBlobFile.ReadChain(const RecordIndex: Word32; var Buf; const BufSize: Integer);
+procedure TkvBlobFile.ReadChain(const RecordIndex: Word64; var Buf; const BufSize: Integer);
 var
   RecDataSize : Integer;
   Remain : Integer;
-  RecIdx : Word32;
+  RecIdx : Word64;
   FirstRec : Boolean;
   RecHdr : TkvBlobFileRecordHeader;
   DataP : PByte;
@@ -1302,11 +1304,11 @@ begin
   until Remain = 0;
 end;
 
-procedure TkvBlobFile.ReleaseChain(const RecordIndex: Word32);
+procedure TkvBlobFile.ReleaseChain(const RecordIndex: Word64);
 var
-  RecIdx : Word32;
+  RecIdx : Word64;
   RecHdr : TkvBlobFileRecordHeader;
-  NextRecIdx : Word32;
+  NextRecIdx : Word64;
 begin
   Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
   Assert(Assigned(FFile));
@@ -1325,15 +1327,15 @@ begin
   SaveHeader;
 end;
 
-procedure TkvBlobFile.WriteChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+procedure TkvBlobFile.WriteChain(const RecordIndex: Word64; const Buf; const BufSize: Integer);
 var
   RecDataSize : Integer;
   Remain : Integer;
-  RecIdx : Word32;
-  NewRecIdx : Word32;
+  RecIdx : Word64;
+  NewRecIdx : Word64;
   RecHdr : TkvBlobFileRecordHeader;
   FirstRecHdr : TkvBlobFileRecordHeader;
-  FirstRecIdx : Word32;
+  FirstRecIdx : Word64;
   NewRecHdr : TkvBlobFileRecordHeader;
   DataP : PByte;
   DataSize : Integer;
@@ -1397,7 +1399,7 @@ begin
     SaveHeader;
 end;
 
-function TkvBlobFile.GetChainSize(const RecordIndex: Word32): Integer;
+function TkvBlobFile.GetChainSize(const RecordIndex: Word64): Integer;
 var
   RecHdr : TkvBlobFileRecordHeader;
 begin
@@ -1408,15 +1410,15 @@ begin
   Result := RecHdr.ChainSize;
 end;
 
-procedure TkvBlobFile.AppendChain(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+procedure TkvBlobFile.AppendChain(const RecordIndex: Word64; const Buf; const BufSize: Integer);
 var
   RecDataSize : Integer;
   Remain : Integer;
-  RecIdx : Word32;
-  NewRecIdx : Word32;
+  RecIdx : Word64;
+  NewRecIdx : Word64;
   RecHdr : TkvBlobFileRecordHeader;
   FirstRecHdr : TkvBlobFileRecordHeader;
-  FirstRecIdx : Word32;
+  FirstRecIdx : Word64;
   LastBlockDataUsed : Integer;
   LastBlockDataRemain : Integer;
   NewRecHdr : TkvBlobFileRecordHeader;
@@ -1477,7 +1479,7 @@ begin
         DataSize := LastBlockDataRemain;
 
       FFile.Position := KV_BlobFile_HeaderSize +
-                        UInt64(RecIdx) * FFileHeader.RecordSize +
+                        RecIdx * FFileHeader.RecordSize +
                         KV_BlobFile_RecordHeaderSize +
                         UInt64(LastBlockDataUsed);
 
@@ -1513,7 +1515,7 @@ begin
     SaveHeader;
 end;
 
-procedure TkvBlobFile.WriteChainStart(const RecordIndex: Word32; const Buf; const BufSize: Integer);
+procedure TkvBlobFile.WriteChainStart(const RecordIndex: Word64; const Buf; const BufSize: Integer);
 var
   RecDataSize : Integer;
   RecHdr : TkvBlobFileRecordHeader;
@@ -1535,7 +1537,7 @@ begin
   FFile.WriteBuffer(Buf, BufSize);
 end;
 
-procedure TkvBlobFile.TruncateChainAt(const RecordIndex: Word32; const Size: Integer);
+procedure TkvBlobFile.TruncateChainAt(const RecordIndex: Word64; const Size: Integer);
 var
   RecHdr : TkvBlobFileRecordHeader;
 begin

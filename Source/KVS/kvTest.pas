@@ -62,7 +62,7 @@ begin
   Assert(KV_HashFile_HeaderSize = 1024);
   Assert(KV_HashFile_RecordSize = 128);
   Assert(KV_BlobFile_HeaderSize = 1024);
-  Assert(KV_BlobFile_RecordHeaderSize = 16);
+  Assert(KV_BlobFile_RecordHeaderSize = 24);
 end;
 
 procedure Test_Hash1;
