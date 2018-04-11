@@ -13,7 +13,7 @@
 { 2018/04/08  0.07  Reorganise hash file record structure (breaks
 {                   compatibility) and add Timestamp field }
 { 2018/04/11  0.08  Change hash record and blob record to handle 64 bit indexes }
-{                   (breaks compatibility) }
+{                   (breaks compatibility) and reserve for 64 bit size }
 
 {$INCLUDE kvInclude.inc}
 
@@ -302,7 +302,7 @@ const
   KV_HashFileRecord_Version = 1;
 
   KV_HashFileRecord_SlotShortKeyLength = 26;
-  KV_HashFileRecord_SlotShortValueSize = 32;
+  KV_HashFileRecord_SlotShortValueSize = 28;
 
 type
   TkvHashFileRecordType = (
@@ -331,6 +331,7 @@ type
     ValueType             : TkvHashFileRecordValueType;
     ValueTypeId           : Byte;
     ValueSize             : Word32;
+    ValueSize_Reserved    : Word32;
     case Integer of
       0 : (ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte);
       1 : (ValueLongChainIndex  : Word64);
