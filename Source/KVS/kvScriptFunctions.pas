@@ -134,6 +134,14 @@ type
               const ParamValues: TkvValueArray): AkvValue; override;
   end;
 
+  { GetTimestamp built-in function }
+
+  TkvScriptGetTimestampBuiltInFunction = class(AkvScriptProcedureValue)
+  public
+    function  Call(const Context: TkvScriptContext;
+              const ParamValues: TkvValueArray): AkvValue; override;
+  end;
+
   { IsNull built-in function }
 
   TkvScriptIsNullBuiltInFunction = class(AkvScriptProcedureValue)
@@ -471,6 +479,23 @@ begin
   if Length(ParamValues) <> 0 then
     raise EkvScriptFunction.Create('Invalid parameter count');
   Result := TkvDateTimeValue.Create(Now);
+end;
+
+
+
+{ TkvScriptGetTimestampBuiltInFunction }
+
+function TkvScriptGetTimestampBuiltInFunction.Call(const Context: TkvScriptContext;
+         const ParamValues: TkvValueArray): AkvValue;
+var
+  N : TDateTime;
+  T : PInt64;
+begin
+  if Length(ParamValues) <> 0 then
+    raise EkvScriptFunction.Create('Invalid parameter count');
+  N := Now;
+  T := @N;
+  Result := TkvIntegerValue.Create(T^);
 end;
 
 

@@ -672,6 +672,7 @@ begin
   FIdentifiers.Add('CHAR', TkvScriptCharCastBuiltInFunction.Create);
   FIdentifiers.Add('REPLACE', TkvScriptReplaceBuiltInFunction.Create);
   FIdentifiers.Add('GETDATE', TkvScriptGetDateBuiltInFunction.Create);
+  FIdentifiers.Add('GETTIMESTAMP', TkvScriptGetTimestampBuiltInFunction.Create);
   FIdentifiers.Add('ISNULL', TkvScriptIsNullBuiltInFunction.Create);
   FIdentifiers.Add('LOWER', TkvScriptLowerBuiltInFunction.Create);
   FIdentifiers.Add('UPPER', TkvScriptUpperBuiltInFunction.Create);

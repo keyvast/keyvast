@@ -902,6 +902,13 @@ begin
     Exec('SET @a = DECIMAL("1.2")');
     Exec('EVAL @a', '1.2000000000000000000');
 
+    Exec('SET @a = GETTIMESTAMP');
+    Exec('EVAL @a <> 0', 'true');
+    Sleep(2);
+    Exec('SET @b = GETTIMESTAMP');
+    Exec('EVAL @b <> 0', 'true');
+    Exec('EVAL @b <> @a', 'true');
+
     Ses.Close;
     MSys.Close;
 
@@ -1573,18 +1580,21 @@ begin
     Exec('SET @b1 = ITERATOR_KEY @a');
     Exec('EVAL (@b1 = "1/2/1") OR (@b1 = "1/2/2") OR (@b1 = "1/2/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b1, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL ITERATOR_TIMESTAMP @a <> 0', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'true');
     Exec('SET @b2 = ITERATOR_KEY @a');
     Exec('EVAL @b2 <> @b1', 'true');
     Exec('EVAL (@b2 = "1/2/1") OR (@b2 = "1/2/2") OR (@b2 = "1/2/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b2, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL ITERATOR_TIMESTAMP @a <> 0', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'true');
     Exec('SET @b3 = ITERATOR_KEY @a');
     Exec('EVAL @b3 <> @b2', 'true');
     Exec('EVAL (@b3 = "1/2/1") OR (@b3 = "1/2/2") OR (@b3 = "1/2/3")', 'true');
     Exec('EVAL INTEGER(RIGHT(@b3, 1)) = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL ITERATOR_TIMESTAMP @a <> 0', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'false');
 
