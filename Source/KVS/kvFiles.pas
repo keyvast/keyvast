@@ -11,6 +11,7 @@
 { 2018/03/05  0.06  Blob file append chain }
 { 2018/03/14  0.07  Blob file truncate }
 { 2018/04/11  0.08  Blob file 64-bit indexes }
+{ 2018/04/11  0.09  Hash file 64-bit indexes }
 
 {$INCLUDE kvInclude.inc}
 
@@ -190,7 +191,7 @@ type
     procedure InitHeader;
     procedure LoadHeader;
     procedure SaveHeader;
-    procedure SeekRecord(const Idx: Word32);
+    procedure SeekRecord(const Idx: Word64);
 
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName: String;
@@ -208,12 +209,12 @@ type
     function  AllocateUniqueId: UInt64;
 
     function  GetRecordCount: Integer;
-    procedure LoadRecord(const Idx: Word32; var Rec: TkvHashFileRecord);
-    procedure SaveRecord(const Idx: Word32; const Rec: TkvHashFileRecord);
+    procedure LoadRecord(const Idx: Word64; var Rec: TkvHashFileRecord);
+    procedure SaveRecord(const Idx: Word64; const Rec: TkvHashFileRecord);
 
-    function  AllocateSlotRecords: Word32;
+    function  AllocateSlotRecords: Word64;
 
-    procedure AddDeletedSlots(const BaseIdx: Word32);
+    procedure AddDeletedSlots(const BaseIdx: Word64);
   end;
 
 
@@ -890,7 +891,7 @@ begin
   Result := FFileHeader.RecordCount;
 end;
 
-procedure TkvHashFile.SeekRecord(const Idx: Word32);
+procedure TkvHashFile.SeekRecord(const Idx: Word64);
 begin
   Assert(Assigned(FFile));
 
@@ -898,10 +899,10 @@ begin
     raise EkvFile.Create('Hash file: Invalid index');
 
   FFile.Position := KV_HashFile_HeaderSize +
-                    Int64(Idx) * KV_HashFile_RecordSize;
+                    Idx * KV_HashFile_RecordSize;
 end;
 
-procedure TkvHashFile.LoadRecord(const Idx: Word32; var Rec: TkvHashFileRecord);
+procedure TkvHashFile.LoadRecord(const Idx: Word64; var Rec: TkvHashFileRecord);
 var
   CacheRange : Boolean;
 begin
@@ -930,7 +931,7 @@ begin
     end;
 end;
 
-procedure TkvHashFile.SaveRecord(const Idx: Word32; const Rec: TkvHashFileRecord);
+procedure TkvHashFile.SaveRecord(const Idx: Word64; const Rec: TkvHashFileRecord);
 begin
   Assert(Rec.Magic = KV_HashFileRecord_Magic);
   Assert(Rec.Version = KV_HashFileRecord_Version);
@@ -948,11 +949,11 @@ begin
     end;
 end;
 
-function TkvHashFile.AllocateSlotRecords: Word32;
+function TkvHashFile.AllocateSlotRecords: Word64;
 var
   LvlSlots : Word32;
-  RecIdx : Word32;
-  RecCnt : Word32;
+  RecIdx : Word64;
+  RecCnt : Word64;
   I : Integer;
   EmpRec : TkvHashFileRecord;
   Rec : TkvHashFileRecord;
@@ -965,11 +966,11 @@ begin
   kvInitHashFileRecord(EmpRec);
   EmpRec.RecordType := hfrtEmpty;
 
-  RecIdx := FFileHeader.FirstDeletedIdx;
+  RecIdx := FFileHeader.FirstDeletedIndex;
   if RecIdx <> KV_HashFile_InvalidIndex then
     begin
       LoadRecord(RecIdx, Rec);
-      FFileHeader.FirstDeletedIdx := Rec.ChildSlotRecordIndex;
+      FFileHeader.FirstDeletedIndex := Rec.ChildSlotRecordIndex;
       for I := 0 to LvlSlots - 1 do
         SaveRecord(RecIdx + Word32(I), EmpRec);
       SaveHeader;
@@ -985,16 +986,16 @@ begin
   Result := RecCnt;
 end;
 
-procedure TkvHashFile.AddDeletedSlots(const BaseIdx: Word32);
+procedure TkvHashFile.AddDeletedSlots(const BaseIdx: Word64);
 var
   HashRec : TkvHashFileRecord;
 begin
   Assert(BaseIdx <> KV_HashFile_InvalidIndex);
   kvInitHashFileRecord(HashRec);
   HashRec.RecordType := hfrtDeleted;
-  HashRec.ChildSlotRecordIndex := FFileHeader.FirstDeletedIdx;
+  HashRec.ChildSlotRecordIndex := FFileHeader.FirstDeletedIndex;
   SaveRecord(BaseIdx, HashRec);
-  FFileHeader.FirstDeletedIdx := BaseIdx;
+  FFileHeader.FirstDeletedIndex := BaseIdx;
   SaveHeader;
 end;
 

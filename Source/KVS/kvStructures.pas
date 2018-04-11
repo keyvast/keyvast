@@ -12,7 +12,7 @@
 {                   Change hash file record structure for longer keys }
 { 2018/04/08  0.07  Reorganise hash file record structure (breaks
 {                   compatibility) and add Timestamp field }
-{ 2018/04/11  0.08  Change hash record and block record to handle 64 bit }
+{ 2018/04/11  0.08  Change hash record and blob record to handle 64 bit indexes }
 {                   (breaks compatibility) }
 
 {$INCLUDE kvInclude.inc}
@@ -263,7 +263,7 @@ procedure kvInitDatasetListFileRecord(
 
 const
   KV_HashFile_LevelSlotCount = 32;
-  KV_HashFile_InvalidIndex   = $FFFFFFFF;
+  KV_HashFile_InvalidIndex   = $FFFFFFFFFFFFFFFF;
   KV_HashFile_MaxKeyLength   = $FFFF;
 
 
@@ -276,14 +276,14 @@ const
 
 type
   TkvHashFileHeader = packed record
-    Magic           : Word32;        // KV_HashFileHeader_Magic
-    Version         : Word32;        // KV_HashFileHeader_Version
-    HeaderSize      : Word32;        // KV_HashFile_HeaderSize
-    LevelSlotCount  : Word32;        // Slots count per level (fixed)
-    UniqueIdCounter : UInt64;
-    RecordCount     : Word32;
-    FirstDeletedIdx : Word32;        // Linked list of deleted records
-    Reserved        : array[0..991] of Byte;
+    Magic             : Word32;        // KV_HashFileHeader_Magic
+    Version           : Word32;        // KV_HashFileHeader_Version
+    HeaderSize        : Word32;        // KV_HashFile_HeaderSize
+    LevelSlotCount    : Word32;        // Slots count per level (fixed)
+    UniqueIdCounter   : UInt64;
+    RecordCount       : Word64;
+    FirstDeletedIndex : Word64;        // Linked list of deleted records
+    Reserved          : array[0..983] of Byte;
   end;
   PkvHashFileHeader = ^TkvHashFileHeader;
 
@@ -322,9 +322,8 @@ type
     Magic                 : Word16;                 // KV_HashFileRecord_Magic
     Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
-    Reserved              : Word32;
     Timestamp             : TDateTime;              // Timestamp of last change for Key/Value record types
-    ChildSlotRecordIndex  : Word32;                 // Used by ParentSlot and HashCollision
+    ChildSlotRecordIndex  : Word64;                 // Used by ParentSlot and HashCollision
     KeyHash               : UInt64;                 // kvLevelHash of Key
     KeyLength             : Word16;
     KeyShort              : array[0..KV_HashFileRecord_SlotShortKeyLength - 1] of WideChar;
@@ -335,7 +334,7 @@ type
     case Integer of
       0 : (ValueShort           : array[0..KV_HashFileRecord_SlotShortValueSize - 1] of Byte);
       1 : (ValueLongChainIndex  : Word64);
-      2 : (ValueFolderBaseIndex : Word32);
+      2 : (ValueFolderBaseIndex : Word64);
   end;
 
 const
@@ -563,7 +562,7 @@ begin
   Header.Version := KV_HashFileHeader_Version;
   Header.HeaderSize := KV_HashFile_HeaderSize;
   Header.LevelSlotCount := KV_HashFile_LevelSlotCount;
-  Header.FirstDeletedIdx := KV_HashFile_InvalidIndex;
+  Header.FirstDeletedIndex := KV_HashFile_InvalidIndex;
 end;
 
 

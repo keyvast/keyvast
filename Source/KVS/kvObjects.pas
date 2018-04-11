@@ -42,7 +42,7 @@ type
   { TkvDataset }
 
   TkvDatasetIteratorStackEntry = record
-    BaseRecIdx : Word32;
+    BaseRecIdx : Word64;
     SlotIdx    : Integer;
     FolderName : String;
   end;
@@ -57,7 +57,7 @@ type
     Dataset      : TkvDataset;
     StackLen     : Integer;
     Stack        : array of TkvDatasetIteratorStackEntry;
-    HashRecIdx   : Word32;
+    HashRecIdx   : Word64;
     HashRec      : TkvHashFileRecord;
   end;
   PkvDatasetIterator = ^TkvDatasetIterator;
@@ -88,38 +88,38 @@ type
     procedure HashRecInitKeyValue(out HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
-              const IsFolder: Boolean; var FolderBaseIdx: Word32);
+              const IsFolder: Boolean; var FolderBaseIdx: Word64);
 
     procedure RecursiveHashRecSlotCollisionResolve(
-              const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
+              const HashBaseRecIdx, HashRecIdx: Word64; var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
-              const IsFolder: Boolean; var FolderBaseIdx: Word32;
+              const IsFolder: Boolean; var FolderBaseIdx: Word64;
               const CollisionLevel: Integer;
               const _Now: TDateTime);
     procedure HashRecSlotCollisionResolve(
-              const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
+              const HashBaseRecIdx, HashRecIdx: Word64; var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
-              const IsFolder: Boolean; var FolderBaseIdx: Word32;
+              const IsFolder: Boolean; var FolderBaseIdx: Word64;
               const _Now: TDateTime);
 
     procedure InternalAddRecord(
-              const KeyBaseIdx: Word32; const Key: String;
+              const KeyBaseIdx: Word64; const Key: String;
               const Value: AkvValue;
-              const IsFolder: Boolean; out FolderBaseIdx: Word32;
+              const IsFolder: Boolean; out FolderBaseIdx: Word64;
               const _Now: TDateTime);
 
-    function  LocateRecordFromBase(const BaseIndex: Word32; const Key: String;
-              out HashRecIdx: Word32; out HashRec: TkvHashFileRecord): Boolean;
+    function  LocateRecordFromBase(const BaseIndex: Word64; const Key: String;
+              out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
     function  LocateRecord(const Key: String;
-              out HashRecIdx: Word32; out HashRec: TkvHashFileRecord;
+              out HashRecIdx: Word64; out HashRec: TkvHashFileRecord;
               const UsePaths: Boolean): Boolean;
 
     function  HashRecToKey(const HashRec: TkvHashFileRecord): String;
     function  HashRecToValue(const HashRec: TkvHashFileRecord): AkvValue;
 
-    procedure RecursiveGetChildRecords(const BaseIdx: Word32;
+    procedure RecursiveGetChildRecords(const BaseIdx: Word64;
               const D: TkvDictionaryValue);
     function  RecursiveGetFolderRecords(const HashRec: TkvHashFileRecord): AkvValue;
     function  RecursiveGetAllRecords: AkvValue;
@@ -141,7 +141,7 @@ type
               const Recurse: Boolean): TkvDictionaryValue;
     function  ListOfRootKeys(const Recurse: Boolean): TkvDictionaryValue;
 
-    procedure InternalDeleteRecord(const HashRecIdx: Word32; var HashRec: TkvHashFileRecord);
+    procedure InternalDeleteRecord(const HashRecIdx: Word64; var HashRec: TkvHashFileRecord);
 
     function  SetNextIteratorRecord(var Iterator: TkvDatasetIterator): Boolean;
 
@@ -648,7 +648,7 @@ end;
 procedure TkvDataset.HashRecInitKeyValue(out HashRec: TkvHashFileRecord;
           const Key: String; const KeyHash: UInt64;
           const Value: AkvValue;
-          const IsFolder: Boolean; var FolderBaseIdx: Word32);
+          const IsFolder: Boolean; var FolderBaseIdx: Word64);
 begin
   kvInitHashFileRecord(HashRec);
   HashRec.RecordType := hfrtKeyValue;
@@ -670,15 +670,15 @@ const
 // HashBaseRecIdx and HashRecIdx is the base index and record index of HashRec
 // When resolved new slot records with separate slot entries for HashRec and Key/Value is populated
 procedure TkvDataset.RecursiveHashRecSlotCollisionResolve(
-          const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
+          const HashBaseRecIdx, HashRecIdx: Word64; var HashRec: TkvHashFileRecord;
           const Key: String; const KeyHash: UInt64;
           const Value: AkvValue;
-          const IsFolder: Boolean; var FolderBaseIdx: Word32;
+          const IsFolder: Boolean; var FolderBaseIdx: Word64;
           const CollisionLevel: Integer;
           const _Now: TDateTime);
 var
-  BaseIdx : Word32;
-  RecIdx : Word32;
+  BaseIdx : Word64;
+  RecIdx : Word64;
   Key1Hash : UInt64;
   Key2Hash : UInt64;
   Slt1 : Word32;
@@ -726,10 +726,10 @@ begin
 end;
 
 procedure TkvDataset.HashRecSlotCollisionResolve(
-          const HashBaseRecIdx, HashRecIdx: Word32; var HashRec: TkvHashFileRecord;
+          const HashBaseRecIdx, HashRecIdx: Word64; var HashRec: TkvHashFileRecord;
           const Key: String; const KeyHash: UInt64;
           const Value: AkvValue;
-          const IsFolder: Boolean; var FolderBaseIdx: Word32;
+          const IsFolder: Boolean; var FolderBaseIdx: Word64;
           const _Now: TDateTime);
 begin
   Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
@@ -741,19 +741,20 @@ begin
 end;
 
 procedure TkvDataset.InternalAddRecord(
-          const KeyBaseIdx: Word32; const Key: String;
+          const KeyBaseIdx: Word64; const Key: String;
           const Value: AkvValue;
-          const IsFolder: Boolean; out FolderBaseIdx: Word32;
+          const IsFolder: Boolean; out FolderBaseIdx: Word64;
           const _Now: TDateTime);
 var
   Hsh : UInt64;
   SltI : Word32;
-  HashRecBaseI : Word32;
-  HashRecI : Word32;
+  HashRecBaseI : Word64;
+  HashRecI : Word64;
   HashRec : TkvHashFileRecord;
   NewHashRec : TkvHashFileRecord;
   HashCol : Boolean;
-  RecSl, RecI, EmpI : Word32;
+  RecSl : Word32;
+  RecI, EmpI : Word64;
   Fin : Boolean;
 begin
   FolderBaseIdx := KV_HashFile_InvalidIndex;
@@ -850,7 +851,7 @@ end;
 procedure TkvDataset.AddRecord(const Key: String; const Value: AkvValue; const UsePaths: Boolean);
 var
   KeyLen : Integer;
-  BaseIdx : Word32;
+  BaseIdx : Word64;
   StartI : Integer;
   FolderSepI : Integer;
   SubKey : String;
@@ -970,7 +971,7 @@ end;
 procedure TkvDataset.MakePath(const KeyPath: String);
 var
   KeyLen : Integer;
-  BaseIdx : Word32;
+  BaseIdx : Word64;
   StartI : Integer;
   FolderSepI : Integer;
   SubKey : String;
@@ -1007,13 +1008,13 @@ end;
 const
   KV_Dataset_LocateMaxLevels = 128;
 
-function TkvDataset.LocateRecordFromBase(const BaseIndex: Word32; const Key: String;
-         out HashRecIdx: Word32; out HashRec: TkvHashFileRecord): Boolean;
+function TkvDataset.LocateRecordFromBase(const BaseIndex: Word64; const Key: String;
+         out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
 var
   Hsh : UInt64;
   SltI : Word32;
-  HashRecBaseI : Word32;
-  HashRecI : Word32;
+  HashRecBaseI : Word64;
+  HashRecI : Word64;
   HashCol : Boolean;
   Level : Integer;
   R, Fin : Boolean;
@@ -1090,11 +1091,11 @@ begin
 end;
 
 function TkvDataset.LocateRecord(const Key: String;
-         out HashRecIdx: Word32; out HashRec: TkvHashFileRecord;
+         out HashRecIdx: Word64; out HashRec: TkvHashFileRecord;
          const UsePaths: Boolean): Boolean;
 var
   KeyLen : Integer;
-  BaseIdx : Word32;
+  BaseIdx : Word64;
   StartI : Integer;
   FolderSepI : Integer;
   SubKey : String;
@@ -1134,7 +1135,7 @@ end;
 
 function TkvDataset.RecordExists(const Key: String; const UsePaths: Boolean): Boolean;
 var
-  HashRecIdx : Word32;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if Key = '' then
@@ -1202,11 +1203,11 @@ begin
   end;
 end;
 
-procedure TkvDataset.RecursiveGetChildRecords(const BaseIdx: Word32;
+procedure TkvDataset.RecursiveGetChildRecords(const BaseIdx: Word64;
           const D: TkvDictionaryValue);
 var
   I : Integer;
-  RecI : Word32;
+  RecI : Word64;
   ChildRec : TkvHashFileRecord;
   Key : String;
   Value : AkvValue;
@@ -1273,7 +1274,7 @@ end;
 
 function TkvDataset.GetRecord(const Key: String; const UsePaths: Boolean): AkvValue;
 var
-  HashRecIdx : Word32;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if Key = '' then
@@ -1368,7 +1369,7 @@ procedure TkvDataset.ListOfChildKeys(const BaseIdx: Word32;
 
 var
   I : Integer;
-  RecI : Word32;
+  RecI : Word64;
   ChildRec : TkvHashFileRecord;
   Key : String;
   Value : AkvValue;
@@ -1443,7 +1444,7 @@ end;
 function TkvDataset.ListOfKeys(const KeyPath: String; const Recurse: Boolean;
          const UsePaths: Boolean): TkvDictionaryValue;
 var
-  HashRecIdx : Word32;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if (KeyPath = '') or (KeyPath = '/') then
@@ -1460,7 +1461,7 @@ end;
 
 procedure TkvDataset.SetRecord(const Key: String; const Value: AkvValue; const UsePaths: Boolean);
 var
-  HashRecIdx : Word32;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if Key = '' then
@@ -1747,7 +1748,7 @@ end;
 procedure TkvDataset.AppendRecord(const Key: String; const Value: AkvValue;
           const UsePaths: Boolean);
 var
-  HashRecIdx : Word32;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if Key = '' then
@@ -1774,9 +1775,10 @@ begin
   end;
 end;
 
-procedure TkvDataset.InternalDeleteRecord(const HashRecIdx: Word32; var HashRec: TkvHashFileRecord);
+procedure TkvDataset.InternalDeleteRecord(const HashRecIdx: Word64; var HashRec: TkvHashFileRecord);
 var
-  SltI, RecI : Word32;
+  SltI : Word32;
+  RecI : Word64;
   ChildHashRec : TkvHashFileRecord;
   NewHashRec : TkvHashFileRecord;
   R : Boolean;
@@ -1837,7 +1839,7 @@ end;
 
 procedure TkvDataset.DeleteRecord(const Key: String; const UsePaths: Boolean);
 var
-  HashRecIdx : Word32;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if Key = '' then
@@ -1852,7 +1854,7 @@ function TkvDataset.SetNextIteratorRecord(var Iterator: TkvDatasetIterator): Boo
 var
   E : PkvDatasetIteratorStackEntry;
   R : Boolean;
-  RecIdx : Word32;
+  RecIdx : Word64;
 begin
   Assert(Iterator.StackLen > 0);
 
@@ -1939,8 +1941,8 @@ end;
 function TkvDataset.IterateRecords(const Path: String; out Iterator: TkvDatasetIterator): Boolean;
 var
   E : PkvDatasetIteratorStackEntry;
-  BaseRecIdx : Word32;
-  HashRecIdx : Word32;
+  BaseRecIdx : Word64;
+  HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
   if Path = '' then
