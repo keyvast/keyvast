@@ -83,14 +83,14 @@ type
 
     function  CreateDatabase(const Name: String): TkvDatabase; override;
     procedure DropDatabase(const Name: String); override;
-    function  ListOfDatabases: TkvKeyNameArray; override;
+    function  ListOfDatabases: TkvDictionaryValue; override;
 
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; override;
 
     function  CreateDataset(const DatabaseName, DatasetName: String;
               const UseFolders: Boolean): TkvDataset; override;
     procedure DropDataset(const DatabaseName, DatasetName: String); override;
-    function  ListOfDatasets(const DatabaseName: String): TkvKeyNameArray; override;
+    function  ListOfDatasets(const DatabaseName: String): TkvDictionaryValue; override;
 
     function  AllocateDatasetUniqueId(const DatabaseName, DatasetName: String): UInt64; override;
 
@@ -211,14 +211,15 @@ type
 
     function  CreateDatabase(const Session: TkvScriptSession; const Name: String): TkvDatabase;
     procedure DropDatabase(const Session: TkvScriptSession; const Name: String);
-    function  ListOfDatabases(const Session: TkvScriptSession): TkvKeyNameArray;
+    function  ListOfDatabases(const Session: TkvScriptSession): TkvDictionaryValue;
 
     function  AllocateDatabaseUniqueId(const Session: TkvScriptSession; const DatabaseName: String): UInt64;
 
     function  CreateDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String;
               const UseFolders: Boolean): TkvDataset;
     procedure DropDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String);
-    function  ListOfDatasets(const Session: TkvScriptSession; const DatabaseName: String): TkvKeyNameArray;
+    function  ListOfDatasets(const Session: TkvScriptSession;
+              const DatabaseName: String): TkvDictionaryValue;
 
     function  AllocateDatasetUniqueId(const Session: TkvScriptSession; const DatabaseName, DatasetName: String): UInt64;
 
@@ -397,7 +398,7 @@ begin
   FSystem.DropDatabase(self, Name);
 end;
 
-function TkvScriptSession.ListOfDatabases: TkvKeyNameArray;
+function TkvScriptSession.ListOfDatabases: TkvDictionaryValue;
 begin
   Result := FSystem.ListOfDatabases(self);
 end;
@@ -419,7 +420,7 @@ begin
   FSystem.DropDataset(self, UsedDatabaseName(DatabaseName), DatasetName);
 end;
 
-function TkvScriptSession.ListOfDatasets(const DatabaseName: String): TkvKeyNameArray;
+function TkvScriptSession.ListOfDatasets(const DatabaseName: String): TkvDictionaryValue;
 begin
   Result := FSystem.ListOfDatasets(self, DatabaseName);
 end;
@@ -1090,22 +1091,23 @@ begin
   end;
 end;
 
-function TkvScriptSystem.ListOfDatabases(const Session: TkvScriptSession): TkvKeyNameArray;
+function TkvScriptSystem.ListOfDatabases(const Session: TkvScriptSession): TkvDictionaryValue;
 var
   L, I : Integer;
-  R : TkvKeyNameArray;
+  R, D : TkvDictionaryValue;
   ItR : Boolean;
   It : TkvDatabaseListIterator;
 begin
   ExecLock;
   try
     L := FSystem.GetDatabaseCount;
-    SetLength(R, L);
+    R := TkvDictionaryValue.Create;
     I := 0;
     ItR := FSystem.IterateFirstDatabase(It);
     while ItR and (I < L) do
       begin
-        R[I] := It.Key;
+        D := TkvDictionaryValue.Create;
+        R.Add(It.Key, D);
         ItR := FSystem.IterateNextDatabase(It);
         Inc(I);
       end;
@@ -1150,24 +1152,26 @@ begin
 end;
 
 function TkvScriptSystem.ListOfDatasets(const Session: TkvScriptSession;
-         const DatabaseName: String): TkvKeyNameArray;
+         const DatabaseName: String): TkvDictionaryValue;
 var
   Db : TkvDatabase;
   L, I : Integer;
   ItR : Boolean;
   It : TkvDatasetListIterator;
-  R : TkvKeyNameArray;
+  R, D : TkvDictionaryValue;
 begin
   ExecLock;
   try
     Db := FSystem.RequireDatabaseByName(DatabaseName);
     L := Db.GetDatasetCount;
-    SetLength(R, L);
+    R := TkvDictionaryValue.Create;
     I := 0;
     ItR := FSystem.IterateFirstDataset(DatabaseName, It);
     while ItR and (I < L) do
       begin
-        R[I] := It.Key;
+        D := TkvDictionaryValue.Create;
+        D.AddBoolean('with_folders', It.Dataset.UseFolders);
+        R.Add(It.Key, D);
         ItR := FSystem.IterateNextDataset(It);
         Inc(I);
       end;

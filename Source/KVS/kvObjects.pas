@@ -156,6 +156,7 @@ type
     destructor Destroy; override;
 
     property  Name: String read FName;
+    property  UseFolders: Boolean read FUseFolders;
 
     procedure OpenNew;
     procedure Open;

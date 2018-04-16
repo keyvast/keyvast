@@ -3472,15 +3472,10 @@ end;
 
 function TkvScriptListOfDatabasesExpression.Evaluate(const Context: TkvScriptContext): AkvValue;
 var
-  A : TkvKeyNameArray;
-  R : TkvListValue;
-  I : Integer;
+  A : TkvDictionaryValue;
 begin
   A := Context.Session.ListOfDatabases;
-  R := TkvListValue.Create;
-  for I := 0 to Length(A) - 1 do
-    R.Add(TkvStringValue.Create(A[I]));
-  Result := R;
+  Result := A;
 end;
 
 
@@ -3514,9 +3509,7 @@ function TkvScriptListOfDatasetsExpression.Evaluate(const Context: TkvScriptCont
 var
   N : AkvValue;
   DbN : String;
-  A : TkvKeyNameArray;
-  R : TkvListValue;
-  I : Integer;
+  A : TkvDictionaryValue;
 begin
   N := FDatabaseNameExpr.Evaluate(Context);
   try
@@ -3525,10 +3518,7 @@ begin
     N.Free;
   end;
   A := Context.Session.ListOfDatasets(DbN);
-  R := TkvListValue.Create;
-  for I := 0 to Length(A) - 1 do
-    R.Add(TkvStringValue.Create(A[I]));
-  Result := R;
+  Result := A;
 end;
 
 

@@ -33,8 +33,6 @@ type
 
   { Session }
 
-  TkvKeyNameArray = array of String;
-
   AkvScriptSession = class
   public
     procedure ExecLock; virtual; abstract;
@@ -44,14 +42,14 @@ type
 
     function  CreateDatabase(const Name: String): TkvDatabase; virtual; abstract;
     procedure DropDatabase(const Name: String); virtual; abstract;
-    function  ListOfDatabases: TkvKeyNameArray; virtual; abstract;
+    function  ListOfDatabases: TkvDictionaryValue; virtual; abstract;
 
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; virtual; abstract;
 
     function  CreateDataset(const DatabaseName, DatasetName: String;
               const UseFolders: Boolean): TkvDataset; virtual; abstract;
     procedure DropDataset(const DatabaseName, DatasetName: String); virtual; abstract;
-    function  ListOfDatasets(const DatabaseName: String): TkvKeyNameArray; virtual; abstract;
+    function  ListOfDatasets(const DatabaseName: String): TkvDictionaryValue; virtual; abstract;
 
     function  AllocateDatasetUniqueId(const DatabaseName, DatasetName: String): UInt64; virtual; abstract;
 

@@ -1204,8 +1204,8 @@ begin
     Exec('WHILE @a < 20 BEGIN SET @a = @a + 1; SET @a = @a + 1; END');
     Exec('EVAL @a', '20');
 
-    Exec('EVAL LIST_OF_DATABASES', '["TESTDB"]');
-    Exec('EVAL LIST_OF_DATASETS("TESTDB")', '["testds"]');
+    Exec('EVAL LIST_OF_DATABASES', '{TESTDB:{}}');
+    Exec('EVAL LIST_OF_DATASETS("TESTDB")', '{testds:{with_folders:false}}');
 
     Exec('INSERT 1 1');
     Exec('INSERT 2 2');
