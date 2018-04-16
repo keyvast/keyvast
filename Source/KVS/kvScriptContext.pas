@@ -40,9 +40,6 @@ type
     procedure ExecLock; virtual; abstract;
     procedure ExecUnlock; virtual; abstract;
 
-    procedure SetOptionPaths(const Value: Boolean); virtual; abstract;
-    function  GetOptionPaths: Boolean; virtual; abstract;
-
     function  AllocateSystemUniqueId: UInt64; virtual; abstract;
 
     function  CreateDatabase(const Name: String): TkvDatabase; virtual; abstract;
@@ -51,7 +48,8 @@ type
 
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; virtual; abstract;
 
-    function  CreateDataset(const DatabaseName, DatasetName: String): TkvDataset; virtual; abstract;
+    function  CreateDataset(const DatabaseName, DatasetName: String;
+              const UseFolders: Boolean): TkvDataset; virtual; abstract;
     procedure DropDataset(const DatabaseName, DatasetName: String); virtual; abstract;
     function  ListOfDatasets(const DatabaseName: String): TkvKeyNameArray; virtual; abstract;
 
@@ -64,20 +62,17 @@ type
     function  GetSelectedDatasetName: String; virtual; abstract;
 
     procedure AddRecord(const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue; const UsePaths: Boolean); virtual; abstract;
+              const Value: AkvValue); virtual; abstract;
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); virtual; abstract;
-    function  GetRecord(const DatabaseName, DatasetName, Key: String;
-              const UsePaths: Boolean): AkvValue; virtual; abstract;
+    function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; virtual; abstract;
     function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-              const Recurse: Boolean; const UsePaths: Boolean): AkvValue; virtual; abstract;
-    function  RecordExists(const DatabaseName, DatasetName, Key: String;
-              const UsePaths: Boolean): Boolean; virtual; abstract;
-    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String;
-              const UsePaths: Boolean); virtual; abstract;
+              const Recurse: Boolean): AkvValue; virtual; abstract;
+    function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; virtual; abstract;
+    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); virtual; abstract;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue; const UsePaths: Boolean); virtual; abstract;
+              const Value: AkvValue); virtual; abstract;
     procedure AppendRecord(const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue; const UsePaths: Boolean); virtual; abstract;
+              const Value: AkvValue); virtual; abstract;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;

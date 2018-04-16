@@ -62,7 +62,6 @@ type
     FSelectedScriptDatabase : TkvScriptDatabase;
     FSelectedDataset        : TkvDataset;
     FScriptParser           : TkvScriptParser;
-    FOptionPaths            : Boolean;
 
     function  UsedDatabaseName(const DatabaseName: String): String;
     function  UsedDatasetName(const DatasetName: String): String;
@@ -80,9 +79,6 @@ type
     procedure ExecLock; override;
     procedure ExecUnlock; override;
 
-    procedure SetOptionPaths(const Value: Boolean); override;
-    function  GetOptionPaths: Boolean; override;
-
     function  AllocateSystemUniqueId: UInt64; override;
 
     function  CreateDatabase(const Name: String): TkvDatabase; override;
@@ -91,7 +87,8 @@ type
 
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; override;
 
-    function  CreateDataset(const DatabaseName, DatasetName: String): TkvDataset; override;
+    function  CreateDataset(const DatabaseName, DatasetName: String;
+              const UseFolders: Boolean): TkvDataset; override;
     procedure DropDataset(const DatabaseName, DatasetName: String); override;
     function  ListOfDatasets(const DatabaseName: String): TkvKeyNameArray; override;
 
@@ -103,14 +100,14 @@ type
     function  GetSelectedDatabaseName: String; override;
     function  GetSelectedDatasetName: String; override;
 
-    procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean); override;
+    procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); override;
-    function  GetRecord(const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean): AkvValue; override;
-    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean; const UsePaths: Boolean): AkvValue; override;
-    function  RecordExists(const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean): Boolean; override;
-    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean); override;
-    procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean); override;
-    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue; const UsePaths: Boolean); override;
+    function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; override;
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue; override;
+    function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; override;
+    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); override;
+    procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
+    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String; out Iterator: TkvDatasetIterator): Boolean; override;
@@ -218,7 +215,8 @@ type
 
     function  AllocateDatabaseUniqueId(const Session: TkvScriptSession; const DatabaseName: String): UInt64;
 
-    function  CreateDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String): TkvDataset;
+    function  CreateDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String;
+              const UseFolders: Boolean): TkvDataset;
     procedure DropDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String);
     function  ListOfDatasets(const Session: TkvScriptSession; const DatabaseName: String): TkvKeyNameArray;
 
@@ -233,9 +231,9 @@ type
 
     procedure AddRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue; const UsePaths: Boolean); overload;
+              const Value: AkvValue); overload;
     procedure AddRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
-              const Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
+              const Key: String; const Value: AkvValue); overload;
 
     procedure MakePath(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, KeyPath: String); overload;
@@ -243,40 +241,35 @@ type
               const KeyPath: String); overload;
 
     function  RecordExists(const Session: TkvScriptSession;
-              const DatabaseName, DatasetName, Key: String;
-              const UsePaths: Boolean): Boolean; overload;
+              const DatabaseName, DatasetName, Key: String): Boolean; overload;
     function  RecordExists(const Session: TkvScriptSession; const Dataset: TkvDataset;
-              const Key: String;
-              const UsePaths: Boolean): Boolean; overload;
+              const Key: String): Boolean; overload;
 
     function  GetRecord(const Session: TkvScriptSession;
-              const DatabaseName, DatasetName, Key: String;
-              const UsePaths: Boolean): AkvValue; overload;
+              const DatabaseName, DatasetName, Key: String): AkvValue; overload;
     function  GetRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
-              const Key: String;
-              const UsePaths: Boolean): AkvValue; overload;
+              const Key: String): AkvValue; overload;
 
     function  ListOfKeys(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, KeyPath: String;
-              const Recurse: Boolean; const UsePaths: Boolean): AkvValue;
+              const Recurse: Boolean): AkvValue;
 
     procedure DeleteRecord(const Session: TkvScriptSession;
-              const DatabaseName, DatasetName, Key: String;
-              const UsePaths: Boolean); overload;
+              const DatabaseName, DatasetName, Key: String); overload;
     procedure DeleteRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
-              const Key: String; const UsePaths: Boolean); overload;
+              const Key: String); overload;
 
     procedure SetRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue; const UsePaths: Boolean); overload;
+              const Value: AkvValue); overload;
     procedure SetRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
-              const Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
+              const Key: String; const Value: AkvValue); overload;
 
     procedure AppendRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue; const UsePaths: Boolean); overload;
+              const Value: AkvValue); overload;
     procedure AppendRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
-              const Key: String; const Value: AkvValue; const UsePaths: Boolean); overload;
+              const Key: String; const Value: AkvValue); overload;
 
     function  IterateRecords(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
@@ -364,7 +357,6 @@ begin
   FSystem := System;
   FLocalScope := TkvScriptSessionScope.Create(self, System.FScope);
   FContext := TkvScriptContext.Create(FLocalScope, sstGlobal, self);
-  FOptionPaths := False;
 end;
 
 destructor TkvScriptSession.Destroy;
@@ -388,16 +380,6 @@ end;
 procedure TkvScriptSession.ExecUnlock;
 begin
   FSystem.ExecUnlock;
-end;
-
-procedure TkvScriptSession.SetOptionPaths(const Value: Boolean);
-begin
-  FOptionPaths := Value;
-end;
-
-function TkvScriptSession.GetOptionPaths: Boolean;
-begin
-  Result := FOptionPaths;
 end;
 
 function TkvScriptSession.AllocateSystemUniqueId: UInt64;
@@ -425,9 +407,11 @@ begin
   Result := FSystem.AllocateDatabaseUniqueId(self, DatabaseName);
 end;
 
-function TkvScriptSession.CreateDataset(const DatabaseName, DatasetName: String): TkvDataset;
+function TkvScriptSession.CreateDataset(const DatabaseName, DatasetName: String;
+         const UseFolders: Boolean): TkvDataset;
 begin
-  Result := FSystem.CreateDataset(self, UsedDatabaseName(DatabaseName), DatasetName);
+  Result := FSystem.CreateDataset(self, UsedDatabaseName(DatabaseName), DatasetName,
+      UseFolders);
 end;
 
 procedure TkvScriptSession.DropDataset(const DatabaseName, DatasetName: String);
@@ -498,15 +482,15 @@ begin
 end;
 
 procedure TkvScriptSession.AddRecord(const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue; const UsePaths: Boolean);
+          const Value: AkvValue);
 begin
   if (DatasetName = '') and Assigned(FSelectedDataset) then
-    FSystem.AddRecord(self, FSelectedDataset, Key, Value, UsePaths)
+    FSystem.AddRecord(self, FSelectedDataset, Key, Value)
   else
     FSystem.AddRecord(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
-        Key, Value, UsePaths);
+        Key, Value);
 end;
 
 procedure TkvScriptSession.MakePath(const DatabaseName, DatasetName, KeyPath: String);
@@ -521,72 +505,70 @@ begin
 end;
 
 function TkvScriptSession.GetRecord(const DatabaseName, DatasetName,
-         Key: String; const UsePaths: Boolean): AkvValue;
+         Key: String): AkvValue;
 begin
   if (DatasetName = '') and Assigned(FSelectedDataset) then
-    Result := FSystem.GetRecord(self, FSelectedDataset, Key, UsePaths)
+    Result := FSystem.GetRecord(self, FSelectedDataset, Key)
   else
     Result := FSystem.GetRecord(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
-        Key, UsePaths);
+        Key);
 end;
 
 function TkvScriptSession.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-         const Recurse: Boolean; const UsePaths: Boolean): AkvValue;
+         const Recurse: Boolean): AkvValue;
 begin
   Result := FSystem.ListOfKeys(self,
       UsedDatabaseName(DatabaseName),
       UsedDatasetName(DatasetName),
-      KeyPath, Recurse, UsePaths);
+      KeyPath, Recurse);
 end;
 
-function TkvScriptSession.RecordExists(const DatabaseName, DatasetName, Key: String;
-         const UsePaths: Boolean): Boolean;
+function TkvScriptSession.RecordExists(const DatabaseName, DatasetName, Key: String): Boolean;
 begin
   if (DatasetName = '') and Assigned(FSelectedDataset) then
-    Result := FSystem.RecordExists(self, FSelectedDataset, Key, UsePaths)
+    Result := FSystem.RecordExists(self, FSelectedDataset, Key)
   else
     Result := FSystem.RecordExists(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
-        Key, UsePaths);
+        Key);
 end;
 
-procedure TkvScriptSession.DeleteRecord(const DatabaseName, DatasetName, Key: String;
-          const UsePaths: Boolean);
+procedure TkvScriptSession.DeleteRecord(const DatabaseName, DatasetName, Key: String);
 begin
   if (DatasetName = '') and Assigned(FSelectedDataset) then
-    FSystem.DeleteRecord(self, FSelectedDataset, Key, UsePaths)
+    FSystem.DeleteRecord(self, FSelectedDataset, Key)
   else
     FSystem.DeleteRecord(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
-        Key, UsePaths);
+        Key);
 end;
 
 procedure TkvScriptSession.SetRecord(const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue; const UsePaths: Boolean);
+          const Value: AkvValue);
 begin
   if (DatasetName = '') and Assigned(FSelectedDataset) then
-    FSystem.SetRecord(self, FSelectedDataset, Key, Value, UsePaths)
+    FSystem.SetRecord(self, FSelectedDataset, Key, Value)
   else
     FSystem.SetRecord(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
-        Key, Value, UsePaths);
+        Key, Value);
 end;
 
 procedure TkvScriptSession.AppendRecord(const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue; const UsePaths: Boolean);
+          const Value: AkvValue);
 begin
   if (DatasetName = '') and Assigned(FSelectedDataset) then
-    FSystem.AppendRecord(self, FSelectedDataset, Key, Value, UsePaths)
+    FSystem.AppendRecord(self, FSelectedDataset, Key, Value)
   else
     FSystem.AppendRecord(self,
         UsedDatabaseName(DatabaseName),
         UsedDatasetName(DatasetName),
-        Key, Value, UsePaths);
+        Key, Value);
 end;
 
 function TkvScriptSession.IterateRecords(const DatabaseName, DatasetName: String;
@@ -1090,7 +1072,7 @@ begin
   Im := Db.FStoredProcList.IterateFirst(It);
   while Assigned(Im) do
     begin
-      FSystem.SysInfoDataset.DeleteRecord('sp:' + DatabaseName + ':' + Im^.Key, False);
+      FSystem.SysInfoDataset.DeleteRecord('sp:' + DatabaseName + ':' + Im^.Key);
       Im := Db.FStoredProcList.IterateNext(It);
     end;
 end;
@@ -1100,7 +1082,7 @@ begin
   ExecLock;
   try
     FSystem.DropDatabase(Name);
-    FSystem.SysInfoDataset.DeleteRecord('db:' + Name, False);
+    FSystem.SysInfoDataset.DeleteRecord('db:' + Name);
     DropDatabaseStoredProcedures(Name);
     RemoveScriptDatabase(Name);
   finally
@@ -1145,11 +1127,12 @@ begin
 end;
 
 function TkvScriptSystem.CreateDataset(const Session: TkvScriptSession;
-         const DatabaseName, DatasetName: String): TkvDataset;
+         const DatabaseName, DatasetName: String;
+         const UseFolders: Boolean): TkvDataset;
 begin
   ExecLock;
   try
-    Result := FSystem.CreateDataset(DatabaseName, DatasetName);
+    Result := FSystem.CreateDataset(DatabaseName, DatasetName, UseFolders);
   finally
     ExecUnlock;
   end;
@@ -1246,24 +1229,22 @@ begin
 end;
 
 procedure TkvScriptSystem.AddRecord(const Session: TkvScriptSession;
-          const DatabaseName, DatasetName, Key: String; const Value: AkvValue;
-          const UsePaths: Boolean);
+          const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
 begin
   ExecLock;
   try
-    FSystem.AddRecord(DatabaseName, DatasetName, Key, Value, UsePaths);
+    FSystem.AddRecord(DatabaseName, DatasetName, Key, Value);
   finally
     ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.AddRecord(const Session: TkvScriptSession;
-          const Dataset: TkvDataset; const Key: String; const Value: AkvValue;
-          const UsePaths: Boolean);
+          const Dataset: TkvDataset; const Key: String; const Value: AkvValue);
 begin
   ExecLock;
   try
-    FSystem.AddRecord(Dataset, Key, Value, UsePaths);
+    FSystem.AddRecord(Dataset, Key, Value);
   finally
     ExecUnlock;
   end;
@@ -1291,47 +1272,44 @@ begin
 end;
 
 function TkvScriptSystem.RecordExists(const Session: TkvScriptSession;
-         const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean): Boolean;
+         const DatabaseName, DatasetName, Key: String): Boolean;
 begin
   ExecLock;
   try
-    Result := FSystem.RecordExists(DatabaseName, DatasetName, Key, UsePaths);
+    Result := FSystem.RecordExists(DatabaseName, DatasetName, Key);
   finally
     ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.RecordExists(const Session: TkvScriptSession;
-         const Dataset: TkvDataset; const Key: String;
-         const UsePaths: Boolean): Boolean;
+         const Dataset: TkvDataset; const Key: String): Boolean;
 begin
   ExecLock;
   try
-    Result := FSystem.RecordExists(Dataset, Key, UsePaths);
+    Result := FSystem.RecordExists(Dataset, Key);
   finally
     ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.GetRecord(const Session: TkvScriptSession;
-         const DatabaseName, DatasetName, Key: String;
-         const UsePaths: Boolean): AkvValue;
+         const DatabaseName, DatasetName, Key: String): AkvValue;
 begin
   ExecLock;
   try
-    Result := FSystem.GetRecord(DatabaseName, DatasetName, Key, UsePaths);
+    Result := FSystem.GetRecord(DatabaseName, DatasetName, Key);
   finally
     ExecUnlock;
   end;
 end;
 
 function TkvScriptSystem.GetRecord(const Session: TkvScriptSession;
-         const Dataset: TkvDataset; const Key: String;
-         const UsePaths: Boolean): AkvValue;
+         const Dataset: TkvDataset; const Key: String): AkvValue;
 begin
   ExecLock;
   try
-    Result := FSystem.GetRecord(Dataset, Key, UsePaths);
+    Result := FSystem.GetRecord(Dataset, Key);
   finally
     ExecUnlock;
   end;
@@ -1339,22 +1317,22 @@ end;
 
 function TkvScriptSystem.ListOfKeys(const Session: TkvScriptSession;
          const DatabaseName, DatasetName, KeyPath: String;
-         const Recurse: Boolean; const UsePaths: Boolean): AkvValue;
+         const Recurse: Boolean): AkvValue;
 begin
   ExecLock;
   try
-    Result := FSystem.ListOfKeys(DatabaseName, DatasetName, KeyPath, Recurse, UsePaths);
+    Result := FSystem.ListOfKeys(DatabaseName, DatasetName, KeyPath, Recurse);
   finally
     ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.DeleteRecord(const Session: TkvScriptSession;
-          const DatabaseName, DatasetName, Key: String; const UsePaths: Boolean);
+          const DatabaseName, DatasetName, Key: String);
 begin
   ExecLock;
   try
-    FSystem.DeleteRecord(DatabaseName, DatasetName, Key, UsePaths);
+    FSystem.DeleteRecord(DatabaseName, DatasetName, Key);
   finally
     ExecUnlock;
   end;
@@ -1362,23 +1340,22 @@ end;
 
 procedure TkvScriptSystem.DeleteRecord(const Session: TkvScriptSession;
           const Dataset: TkvDataset;
-          const Key: String; const UsePaths: Boolean);
+          const Key: String);
 begin
   ExecLock;
   try
-    FSystem.DeleteRecord(Dataset, Key, UsePaths);
+    FSystem.DeleteRecord(Dataset, Key);
   finally
     ExecUnlock;
   end;
 end;
 
 procedure TkvScriptSystem.SetRecord(const Session: TkvScriptSession;
-          const DatabaseName, DatasetName, Key: String; const Value: AkvValue;
-          const UsePaths: Boolean);
+          const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
 begin
   ExecLock;
   try
-    FSystem.SetRecord(DatabaseName, DatasetName, Key, Value, UsePaths);
+    FSystem.SetRecord(DatabaseName, DatasetName, Key, Value);
   finally
     ExecUnlock;
   end;
@@ -1386,12 +1363,11 @@ end;
 
 procedure TkvScriptSystem.SetRecord(const Session: TkvScriptSession;
           const Dataset: TkvDataset;
-          const Key: String; const Value: AkvValue;
-          const UsePaths: Boolean);
+          const Key: String; const Value: AkvValue);
 begin
   ExecLock;
   try
-    FSystem.SetRecord(Dataset, Key, Value, UsePaths);
+    FSystem.SetRecord(Dataset, Key, Value);
   finally
     ExecUnlock;
   end;
@@ -1399,11 +1375,11 @@ end;
 
 procedure TkvScriptSystem.AppendRecord(const Session: TkvScriptSession;
           const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue; const UsePaths: Boolean);
+          const Value: AkvValue);
 begin
   ExecLock;
   try
-    FSystem.AppendRecord(DatabaseName, DatasetName, Key, Value, UsePaths);
+    FSystem.AppendRecord(DatabaseName, DatasetName, Key, Value);
   finally
     ExecUnlock;
   end;
@@ -1411,11 +1387,11 @@ end;
 
 procedure TkvScriptSystem.AppendRecord(const Session: TkvScriptSession;
           const Dataset: TkvDataset;
-          const Key: String; const Value: AkvValue; const UsePaths: Boolean);
+          const Key: String; const Value: AkvValue);
 begin
   ExecLock;
   try
-    FSystem.AppendRecord(Dataset, Key, Value, UsePaths);
+    FSystem.AppendRecord(Dataset, Key, Value);
   finally
     ExecUnlock;
   end;
@@ -1510,7 +1486,7 @@ begin
     Db.RemoveStoredProc(ProcedureName);
 
     FSystem.SysInfoDataset.DeleteRecord(
-        'sp:' + DatabaseName + ':' + ProcedureName, False);
+        'sp:' + DatabaseName + ':' + ProcedureName);
   finally
     ExecUnlock;
   end;

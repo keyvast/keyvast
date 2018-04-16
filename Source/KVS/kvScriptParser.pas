@@ -17,6 +17,7 @@
 { 2018/04/08  0.13  LIST_OF_KEYS expression }
 { 2018/04/09  0.14  SETPATHS statement }
 { 2018/04/10  0.15  ITERATOR_TIMESTAMP expression }
+{ 2018/04/16  0.16  WITH_FOLDERS, WITHOUT_FOLDERS specifiers }
 
 {$INCLUDE kvInclude.inc}
 
@@ -69,12 +70,13 @@ type
       stFloat,
       stKeyString,
 
-      stSETPATHS,
       stUSE,
       stCREATE,
       stDROP,
       stDATABASE,
       stDATASET,
+      stWITH_FOLDERS,
+      stWITHOUT_FOLDERS,
 
       stPROCEDURE,
       stRETURN,
@@ -170,7 +172,6 @@ type
     function  ParseFactor: AkvScriptExpression;
     function  ParseTerm: AkvScriptExpression;
     function  ParseExpression: AkvScriptExpression;
-    function  ParseSetPathsStatement: AkvScriptStatement;
     function  ParseUseStatement: TkvScriptUseStatement;
     function  ParseCreateDatabaseStatement: AkvScriptStatement;
     function  ParseCreateDatasetStatement: AkvScriptStatement;
@@ -215,15 +216,16 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 42;
+  kvScriptKeywordCount = 43;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
       'DATABASE',
       'DATASET',
+      'WITH_FOLDERS',
+      'WITHOUT_FOLDERS',
       'PROCEDURE',
       'RETURN',
-      'SETPATHS',
       'USE',
       'INSERT',
       'DELETE',
@@ -265,9 +267,10 @@ const
       stDROP,
       stDATABASE,
       stDATASET,
+      stWITH_FOLDERS,
+      stWITHOUT_FOLDERS,
       stPROCEDURE,
       stRETURN,
-      stSETPATHS,
       stUSE,
       stINSERT,
       stDELETE,
@@ -1266,16 +1269,6 @@ begin
   Result := ParseTerm;
 end;
 
-function TkvScriptParser.ParseSetPathsStatement: AkvScriptStatement;
-var
-  ValExpr : AkvScriptExpression;
-begin
-  Assert(FToken = stSETPATHS);
-  GetNextToken;
-  ValExpr := ParseExpression;
-  Result := TkvScriptSetPathsStatement.Create(ValExpr);
-end;
-
 function TkvScriptParser.ParseUseStatement: TkvScriptUseStatement;
 var
   DbName : String;
@@ -1324,6 +1317,7 @@ var
   Iden : String;
   DbName : String;
   DsName : String;
+  UseFolders : Boolean;
 begin
   Assert(FToken = stDATASET);
   SkipWhitespace;
@@ -1343,7 +1337,21 @@ begin
   else
     DsName := Iden;
 
-  Result := TkvScriptCreateDatasetStatement.Create(DbName, DsName);
+  if FToken = stWITH_FOLDERS then
+    begin
+      UseFolders := True;
+      GetNextToken;
+    end
+  else
+  if FToken = stWITHOUT_FOLDERS then
+    begin
+      UseFolders := False;
+      GetNextToken;
+    end
+  else
+    UseFolders := False;
+
+  Result := TkvScriptCreateDatasetStatement.Create(DbName, DsName, UseFolders);
 end;
 
 function TkvScriptParser.ParseCreateProcedureStatement: AkvScriptStatement;
@@ -1749,7 +1757,6 @@ end;
 function TkvScriptParser.ParseStatement: AkvScriptStatement;
 begin
   case FToken of
-    stSETPATHS        : Result := ParseSetPathsStatement;
     stUSE             : Result := ParseUseStatement;
     stCREATE          : Result := ParseCreateStatement;
     stDROP            : Result := ParseDropStatement;

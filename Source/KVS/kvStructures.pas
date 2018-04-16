@@ -210,7 +210,8 @@ type
     NameLength   : Word32;
     Name         : array[0..KV_DatasetName_MaxLength - 1] of WideChar;
     CreationTime : TDateTime;
-    Reserved     : array[0..874] of Byte;
+    UseFolders   : Boolean;
+    Reserved     : array[0..873] of Byte;
   end;
 
 const
@@ -218,7 +219,7 @@ const
 
 procedure kvInitDatasetListFileRecord(
           var Rec: TkvDatasetListFileRecord;
-          const Name: String);
+          const Name: String; const UseFolders: Boolean);
 
 
 
@@ -534,7 +535,7 @@ end;
 { Dataset list file record }
 
 procedure kvInitDatasetListFileRecord(var Rec: TkvDatasetListFileRecord;
-          const Name: String);
+          const Name: String; const UseFolders: Boolean);
 var
   L : Integer;
 begin
@@ -550,6 +551,7 @@ begin
     Move(PChar(Name)^, Rec.Name[0], L * SizeOf(Char));
 
   Rec.CreationTime := Now;
+  Rec.UseFolders := UseFolders;
 end;
 
 

@@ -375,7 +375,8 @@
             DATETIME(x)  Constructs date/time from string parameter.
             DATE(y,m,d)  Constructs date.
             TIME(h,m,s)  Constructs time.
-            GETDATE()    Current date and time.
+            GETDATE()    Current date and time as date/time.
+            GETTIMESTAMP Current date and time as integer.
 
         Binary
 
@@ -538,10 +539,11 @@
         access multiple entries. Internally, a folder starts a new
         hash sub-tree.
 
-        Paths are turned off by default, the feature can be turned
-        on in a session with:
+        Folders are turned on or off when a dataset is created. By
+        default folders are off. To create a dataset with folders
+        turned on, add WITH_FOLDERS to the create statement, e.g.
 
-            SETPATHS TRUE
+            CREATE DATASET DB:ds WITH_FOLDERS
 
         Folders in a path is delimited with a slash "/" character,
         e.g.
@@ -667,6 +669,7 @@
         <create database statement> ::= 'CREATE DATABASE' <database name>
 
         <create dataset statement> ::= 'CREATE DATASET' <dataset ref>
+            [ 'WITH_FOLDERS' | 'WITHOUT_FOLDERS' ]
 
         <drop database statement> ::= 'DROP DATABASE' <database name>
 
