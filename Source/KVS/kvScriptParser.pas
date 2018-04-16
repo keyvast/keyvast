@@ -685,6 +685,7 @@ begin
   N := FBufPos;
   if N >= FBufLen then
     begin
+      FToken := stEndOfBuf;
       Result := stEndOfBuf;
       exit;
     end;
@@ -829,8 +830,7 @@ begin
         R := True;
       end;
   until not R;
-  if FToken = stWhitespace then
-    GetNextToken;
+  GetNextToken;
   Result := TkvScriptRecordAndFieldReference.Create(RecRef, FieldRef);
 end;
 
@@ -1809,6 +1809,8 @@ begin
   FToken := stNone;
   GetNextToken;
   Result := ParseCommand;
+  if FToken <> stEndOfBuf then
+    raise EkvScriptParser.Create('Unexpected token');
 end;
 
 
