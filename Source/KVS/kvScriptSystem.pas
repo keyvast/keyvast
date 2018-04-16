@@ -100,17 +100,22 @@ type
     function  GetSelectedDatabaseName: String; override;
     function  GetSelectedDatasetName: String; override;
 
-    procedure AddRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
+    procedure AddRecord(const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue); override;
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); override;
     function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; override;
-    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue; override;
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
+              const Recurse: Boolean): AkvValue; override;
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; override;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); override;
-    procedure SetRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
-    procedure AppendRecord(const DatabaseName, DatasetName, Key: String; const Value: AkvValue); override;
+    procedure SetRecord(const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue); override;
+    procedure AppendRecord(const DatabaseName, DatasetName, Key: String;
+              const Value: AkvValue); override;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
-              const Path: String; out Iterator: TkvDatasetIterator): Boolean; override;
+              const Path: String;
+              out Iterator: TkvDatasetIterator): Boolean; override;
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; override;
     function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; override;
     function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue; override;
@@ -213,19 +218,25 @@ type
     procedure DropDatabase(const Session: TkvScriptSession; const Name: String);
     function  ListOfDatabases(const Session: TkvScriptSession): TkvDictionaryValue;
 
-    function  AllocateDatabaseUniqueId(const Session: TkvScriptSession; const DatabaseName: String): UInt64;
+    function  AllocateDatabaseUniqueId(const Session: TkvScriptSession;
+              const DatabaseName: String): UInt64;
 
-    function  CreateDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String;
+    function  CreateDataset(const Session: TkvScriptSession;
+              const DatabaseName, DatasetName: String;
               const UseFolders: Boolean): TkvDataset;
-    procedure DropDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String);
+    procedure DropDataset(const Session: TkvScriptSession;
+              const DatabaseName, DatasetName: String);
     function  ListOfDatasets(const Session: TkvScriptSession;
               const DatabaseName: String): TkvDictionaryValue;
 
-    function  AllocateDatasetUniqueId(const Session: TkvScriptSession; const DatabaseName, DatasetName: String): UInt64;
+    function  AllocateDatasetUniqueId(const Session: TkvScriptSession;
+              const DatabaseName, DatasetName: String): UInt64;
 
-    procedure UseDatabase(const Session: TkvScriptSession; const Name: String;
+    procedure UseDatabase(const Session: TkvScriptSession;
+              const Name: String;
               out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase);
-    procedure UseDataset(const Session: TkvScriptSession; const DatabaseName, DatasetName: String;
+    procedure UseDataset(const Session: TkvScriptSession;
+              const DatabaseName, DatasetName: String;
               out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase;
               out Dataset: TkvDataset);
     procedure UseNone(const Session: TkvScriptSession);
@@ -233,12 +244,14 @@ type
     procedure AddRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
-    procedure AddRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    procedure AddRecord(const Session: TkvScriptSession;
+              const Dataset: TkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     procedure MakePath(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, KeyPath: String); overload;
-    procedure MakePath(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    procedure MakePath(const Session: TkvScriptSession;
+              const Dataset: TkvDataset;
               const KeyPath: String); overload;
 
     function  RecordExists(const Session: TkvScriptSession;
@@ -248,7 +261,8 @@ type
 
     function  GetRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String): AkvValue; overload;
-    function  GetRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    function  GetRecord(const Session: TkvScriptSession;
+              const Dataset: TkvDataset;
               const Key: String): AkvValue; overload;
 
     function  ListOfKeys(const Session: TkvScriptSession;
@@ -257,29 +271,36 @@ type
 
     procedure DeleteRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String); overload;
-    procedure DeleteRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    procedure DeleteRecord(const Session: TkvScriptSession;
+              const Dataset: TkvDataset;
               const Key: String); overload;
 
     procedure SetRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
-    procedure SetRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    procedure SetRecord(const Session: TkvScriptSession;
+              const Dataset: TkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     procedure AppendRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
-    procedure AppendRecord(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    procedure AppendRecord(const Session: TkvScriptSession;
+              const Dataset: TkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     function  IterateRecords(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: TkvDatasetIterator): Boolean;
-    function  IterateNextRecord(const Session: TkvScriptSession; var Iterator: TkvDatasetIterator): Boolean;
-    function  IteratorGetKey(const Session: TkvScriptSession; const Iterator: TkvDatasetIterator): String;
-    function  IteratorGetValue(const Session: TkvScriptSession; const Iterator: TkvDatasetIterator): AkvValue;
-    function  IteratorGetTimestamp(const Session: TkvScriptSession; const Iterator: TkvDatasetIterator): Int64;
+    function  IterateNextRecord(const Session: TkvScriptSession;
+              var Iterator: TkvDatasetIterator): Boolean;
+    function  IteratorGetKey(const Session: TkvScriptSession;
+              const Iterator: TkvDatasetIterator): String;
+    function  IteratorGetValue(const Session: TkvScriptSession;
+              const Iterator: TkvDatasetIterator): AkvValue;
+    function  IteratorGetTimestamp(const Session: TkvScriptSession;
+              const Iterator: TkvDatasetIterator): Int64;
 
     procedure CreateStoredProcedure(const Session: TkvScriptSession;
               const DatabaseName, ProcedureName, Script: String);
@@ -1254,7 +1275,8 @@ begin
   end;
 end;
 
-procedure TkvScriptSystem.MakePath(const Session: TkvScriptSession; const DatabaseName, DatasetName, KeyPath: String);
+procedure TkvScriptSystem.MakePath(const Session: TkvScriptSession;
+          const DatabaseName, DatasetName, KeyPath: String);
 begin
   ExecLock;
   try
@@ -1264,7 +1286,8 @@ begin
   end;
 end;
 
-procedure TkvScriptSystem.MakePath(const Session: TkvScriptSession; const Dataset: TkvDataset;
+procedure TkvScriptSystem.MakePath(const Session: TkvScriptSession;
+          const Dataset: TkvDataset;
           const KeyPath: String);
 begin
   ExecLock;
