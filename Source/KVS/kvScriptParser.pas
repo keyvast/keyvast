@@ -106,6 +106,7 @@ type
       stITERATOR_KEY,
       stITERATOR_VALUE,
       stITERATOR_TIMESTAMP,
+      stITERATOR_DETAIL,
 
       stNULL,
       stTRUE,
@@ -166,6 +167,7 @@ type
     function  ParseIteratorKeyExpression: AkvScriptExpression;
     function  ParseIteratorValueExpression: AkvScriptExpression;
     function  ParseIteratorTimestampExpression: AkvScriptExpression;
+    function  ParseIteratorDetailExpression: AkvScriptExpression;
     function  ParseListOfKeysExpression: AkvScriptExpression;
     function  ParseUniqueIdExpression: AkvScriptExpression;
     function  ParseValue: AkvScriptValue;
@@ -216,7 +218,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 43;
+  kvScriptKeywordCount = 44;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -247,6 +249,7 @@ const
       'ITERATOR_KEY',
       'ITERATOR_VALUE',
       'ITERATOR_TIMESTAMP',
+      'ITERATOR_DETAIL',
       'NULL',
       'TRUE',
       'FALSE',
@@ -292,6 +295,7 @@ const
       stITERATOR_KEY,
       stITERATOR_VALUE,
       stITERATOR_TIMESTAMP,
+      stITERATOR_DETAIL,
       stNULL,
       stTRUE,
       stFALSE,
@@ -335,7 +339,8 @@ begin
     end;
 end;
 
-function BufGetKeywordToken(const Buf: PChar; const BufLen: Integer): TkvScriptToken;
+function BufGetKeywordToken(const Buf: PChar; const BufLen: Integer;
+         out Keyword: String): TkvScriptToken;
 var
   I : Integer;
   K : String;
@@ -345,10 +350,12 @@ begin
       K := kvScriptKeyword[I];
       if BufMatchKeyword(Buf, BufLen, K) then
         begin
+          Keyword := K;
           Result := kvScriptKeywordTokens[I];
           exit;
         end;
     end;
+  Keyword := '';
   Result := stNone;
 end;
 
@@ -423,6 +430,7 @@ var
   C : WideChar;
   T : TkvScriptToken;
   IdenLen : Integer;
+  Keyword : String;
 begin
   N := FBufPos;
   P := FBuf;
@@ -439,7 +447,7 @@ begin
     Inc(P);
     C := P^;
   until not IsIdentifierChar(C);
-  T := BufGetKeywordToken(Q, IdenLen);
+  T := BufGetKeywordToken(Q, IdenLen, Keyword);
   if T = stNone then
     begin
       T := stIdentifier;
@@ -1060,6 +1068,16 @@ begin
   Result := TkvScriptIteratorTimestampExpression.Create(Iden);
 end;
 
+function TkvScriptParser.ParseIteratorDetailExpression: AkvScriptExpression;
+var
+  Iden : String;
+begin
+  Assert(FToken = stITERATOR_DETAIL);
+  GetNextToken;
+  Iden := ExpectIdentifier;
+  Result := TkvScriptIteratorDetailExpression.Create(Iden);
+end;
+
 function TkvScriptParser.ParseListOfKeysExpression: AkvScriptExpression;
 var
   RecRef : TkvScriptRecordReference;
@@ -1198,6 +1216,8 @@ begin
         Ex := ParseIteratorValueExpression;
       stITERATOR_TIMESTAMP :
         Ex := ParseIteratorTimestampExpression;
+      stITERATOR_DETAIL :
+        Ex := ParseIteratorDetailExpression;
       stLIST_OF_KEYS :
         Ex := ParseListOfKeysExpression;
     end;
@@ -1646,10 +1666,7 @@ begin
   Assert(FToken = stSET);
   GetNextToken;
 
-  if (FToken <> stIdentifier) or (FTokenIdentifier = '') then
-    raise EkvScriptParser.Create('Identifier expected');
-  Iden := FTokenIdentifier;
-  GetNextToken;
+  Iden := ExpectIdentifier;
 
   IdenRef := ParseIdentifierRef(True);
 

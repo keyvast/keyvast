@@ -778,7 +778,9 @@
 
         <iterator expression> ::=
             'ITERATOR_KEY' <identifier> |
-            'ITERATOR_VALUE' <identifier>
+            'ITERATOR_VALUE' <identifier> |
+            'ITERATOR_TIMESTAMP' <identifier> |
+            'ITERATOR_DETAIL' <identifier>
 
         <listofkeys expression> ::=
             'LIST_OF_KEYS' <record ref> [ 'RECURSE' ]

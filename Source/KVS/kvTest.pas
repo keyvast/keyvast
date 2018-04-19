@@ -950,7 +950,7 @@ begin
     Ses := MSys.AddSession;
 
     Exec('CREATE DATABASE TESTDB');
-    Exec('CREATE DATASET TESTDB:testds WITHOUT_FOLDERS');
+    Exec('CREATE DATASET TESTDB:testds');
 
     Exec('INSERT TESTDB:testds\1 1');
     Exec('SELECT TESTDB:testds\1', '1');
@@ -1214,6 +1214,10 @@ begin
     Exec('ITERATE_RECORDS TESTDB:testds @a');
     Exec('EVAL @a', 'true');
     Exec('EVAL ITERATOR_KEY @a = ITERATOR_VALUE @a', 'true');
+    Exec('SET @b = ITERATOR_DETAIL @a');
+    Exec('EVAL @b.key = ITERATOR_KEY @a', 'true');
+    Exec('EVAL @b.value = ITERATOR_VALUE @a', 'true');
+    Exec('EVAL @b.timestamp = ITERATOR_TIMESTAMP @a', 'true');
     Exec('ITERATE_NEXT @a');
     Exec('EVAL @a', 'true');
     Exec('EVAL ITERATOR_KEY @a = ITERATOR_VALUE @a', 'true');

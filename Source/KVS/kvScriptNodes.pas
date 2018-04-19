@@ -884,6 +884,20 @@ type
     function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
   end;
 
+  { Iterator Detail expression }
+
+  TkvScriptIteratorDetailExpression = class(AkvScriptExpression)
+  private
+    FIdentifier : String;
+
+  public
+    constructor Create(const Identifier: String);
+
+    function  Duplicate: AkvScriptNode; override;
+    function  GetAsString: String; override;
+    function  Evaluate(const Context: TkvScriptContext): AkvValue; override;
+  end;
+
   { List Of Keys expression }
 
   TkvScriptListOfKeysExpression = class(AkvScriptExpression)
@@ -3747,6 +3761,51 @@ begin
   ItV := TkvDatasetIteratorValue(It);
   Val := Context.Session.IteratorGetTimestamp(ItV.FIterator);
   Result := TkvIntegerValue.Create(Val);
+end;
+
+
+
+{ TkvScriptIteratorDetailExpression }
+
+constructor TkvScriptIteratorDetailExpression.Create(const Identifier: String);
+begin
+  Assert(Identifier <> '');
+
+  inherited Create;
+  FIdentifier := Identifier;
+end;
+
+function TkvScriptIteratorDetailExpression.GetAsString: String;
+begin
+  Result := 'ITERATOR_DETAIL ' + FIdentifier;
+end;
+
+function TkvScriptIteratorDetailExpression.Duplicate: AkvScriptNode;
+begin
+  Result := TkvScriptIteratorDetailExpression.Create(FIdentifier);
+end;
+
+function TkvScriptIteratorDetailExpression.Evaluate(const Context: TkvScriptContext): AkvValue;
+var
+  It : TObject;
+  ItV : TkvDatasetIteratorValue;
+  Key : String;
+  Val : AkvValue;
+  Timestamp : Int64;
+  Res : TkvDictionaryValue;
+begin
+  It := Context.Scope.GetIdentifier(FIdentifier);
+  if not (It is TkvDatasetIteratorValue) then
+    raise EkvScriptNode.Create('Not an iterator');
+  ItV := TkvDatasetIteratorValue(It);
+  Key := Context.Session.IteratorGetKey(ItV.FIterator);
+  Val := Context.Session.IteratorGetValue(ItV.FIterator);
+  Timestamp := Context.Session.IteratorGetTimestamp(ItV.FIterator);
+  Res := TkvDictionaryValue.Create;
+  Res.AddString('key', Key);
+  Res.Add('value', Val);
+  Res.AddInteger('timestamp', Timestamp);
+  Result := Res;
 end;
 
 
