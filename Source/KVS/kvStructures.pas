@@ -323,7 +323,7 @@ type
     Magic                 : Word16;                 // KV_HashFileRecord_Magic
     Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
-    Timestamp             : TDateTime;              // Timestamp of last change for Key/Value record types
+    Timestamp             : Int64;                  // Timestamp of last change for Key/Value record types
     ChildSlotRecordIndex  : Word64;                 // Used by ParentSlot and HashCollision
     KeyHash               : UInt64;                 // kvLevelHash of Key
     KeyLength             : Word16;

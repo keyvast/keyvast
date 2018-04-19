@@ -487,15 +487,10 @@ end;
 
 function TkvScriptGetTimestampBuiltInFunction.Call(const Context: TkvScriptContext;
          const ParamValues: TkvValueArray): AkvValue;
-var
-  N : TDateTime;
-  T : PInt64;
 begin
   if Length(ParamValues) <> 0 then
     raise EkvScriptFunction.Create('Invalid parameter count');
-  N := Now;
-  T := @N;
-  Result := TkvIntegerValue.Create(T^);
+  Result := TkvIntegerValue.Create(kvTimestampNow);
 end;
 
 

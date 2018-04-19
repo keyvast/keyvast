@@ -399,6 +399,17 @@ function kvVarWord32DecodeBuf(const Buf; const BufSize: Integer; out A: Word32):
 
 
 
+{ Timestamp encoding }
+
+const
+  KV_Timestamp_Min = 0;
+  KV_Timestamp_Max = $00FFFFFFFFFFFFFF;
+
+function kvDateTimeToTimestamp(const D: TDateTime): Int64;
+function kvTimestampNow: Int64;
+
+
+
 implementation
 
 uses
@@ -2697,6 +2708,25 @@ begin
   else
     raise EkvValue.CreateFmt('Type error: Cannot append types: %s and %s',
         [A.ClassName, B.ClassName]);
+end;
+
+
+
+{ Timestamp encoding }
+
+function kvDateTimeToTimestamp(const D: TDateTime): Int64;
+const
+  MsPerDay = 24 * 60 * 60 * 1000;
+var
+  M : Double;
+begin
+  M := Double(D) * MsPerDay;
+  Result := Round(M);
+end;
+
+function kvTimestampNow: Int64;
+begin
+  Result := kvDateTimeToTimestamp(Now);
 end;
 
 

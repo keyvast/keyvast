@@ -19,6 +19,7 @@
 { 2018/04/08  0.14  Update Timestamp in hash record }
 { 2018/04/09  0.15  Optional use of Paths in record keys }
 { 2018/04/16  0.16  Set UseFolders on dataset creation }
+{ 2018/04/19  0.17  Change Timestamp internal format }
 
 {$INCLUDE kvInclude.inc}
 
@@ -99,20 +100,20 @@ type
               const Value: AkvValue;
               const IsFolder: Boolean; var FolderBaseIdx: Word64;
               const CollisionLevel: Integer;
-              const TimestampNow: TDateTime);
+              const TimestampNow: Int64);
     procedure HashRecSlotCollisionResolve(
               const HashBaseRecIdx, HashRecIdx: Word64;
               var HashRec: TkvHashFileRecord;
               const Key: String; const KeyHash: UInt64;
               const Value: AkvValue;
               const IsFolder: Boolean; var FolderBaseIdx: Word64;
-              const TimestampNow: TDateTime);
+              const TimestampNow: Int64);
 
     procedure InternalAddRecord(
               const KeyBaseIdx: Word64; const Key: String;
               const Value: AkvValue;
               const IsFolder: Boolean; out FolderBaseIdx: Word64;
-              const TimestampNow: TDateTime);
+              const TimestampNow: Int64);
 
     function  LocateRecordFromBase(const BaseIndex: Word64; const Key: String;
               out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
@@ -692,7 +693,7 @@ procedure TkvDataset.RecursiveHashRecSlotCollisionResolve(
           const Value: AkvValue;
           const IsFolder: Boolean; var FolderBaseIdx: Word64;
           const CollisionLevel: Integer;
-          const TimestampNow: TDateTime);
+          const TimestampNow: Int64);
 var
   BaseIdx : Word64;
   RecIdx : Word64;
@@ -747,7 +748,7 @@ procedure TkvDataset.HashRecSlotCollisionResolve(
           const Key: String; const KeyHash: UInt64;
           const Value: AkvValue;
           const IsFolder: Boolean; var FolderBaseIdx: Word64;
-          const TimestampNow: TDateTime);
+          const TimestampNow: Int64);
 begin
   Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
 
@@ -761,7 +762,7 @@ procedure TkvDataset.InternalAddRecord(
           const KeyBaseIdx: Word64; const Key: String;
           const Value: AkvValue;
           const IsFolder: Boolean; out FolderBaseIdx: Word64;
-          const TimestampNow: TDateTime);
+          const TimestampNow: Int64);
 var
   Hsh : UInt64;
   SltI : Word32;
@@ -873,7 +874,7 @@ var
   StartI : Integer;
   FolderSepI : Integer;
   SubKey : String;
-  LNow : TDateTime;
+  TimestampNow : Int64;
 begin
   KeyLen := Length(Key);
   if (KeyLen = 0) or (KeyLen > KV_HashFile_MaxKeyLength) then
@@ -883,7 +884,7 @@ begin
   if not Assigned(Value) then
     raise EkvObject.Create('Invalid value');
 
-  LNow := Now;
+  TimestampNow := kvTimestampNow;
   if not FUseFolders then
     begin
       BaseIdx := 0;
@@ -900,7 +901,7 @@ begin
         if FolderSepI > 0 then
           begin
             SubKey := Copy(Key, StartI + 1, FolderSepI - StartI);
-            InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, LNow);
+            InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, TimestampNow);
             StartI := FolderSepI + 1;
           end;
       until FolderSepI < 0;
@@ -911,7 +912,7 @@ begin
         SubKey := Copy(Key, StartI + 1, KeyLen - StartI);
     end;
 
-  InternalAddRecord(BaseIdx, SubKey, Value, False, BaseIdx, LNow);
+  InternalAddRecord(BaseIdx, SubKey, Value, False, BaseIdx, TimestampNow);
 end;
 
 procedure TkvDataset.AddRecordString(const Key: String; const Value: String);
@@ -993,13 +994,13 @@ var
   StartI : Integer;
   FolderSepI : Integer;
   SubKey : String;
-  LNow : TDateTime;
+  TimestampNow : Int64;
 begin
   KeyLen := Length(KeyPath);
   if (KeyLen = 0) or (KeyLen > KV_HashFile_MaxKeyLength) then
     raise EkvObject.Create('Invalid key length');
 
-  LNow := Now;
+  TimestampNow := kvTimestampNow;
   BaseIdx := 0;
   StartI := 0;
   repeat
@@ -1009,7 +1010,7 @@ begin
     if FolderSepI > 0 then
       begin
         SubKey := Copy(KeyPath, StartI + 1, FolderSepI - StartI);
-        InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, LNow);
+        InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, TimestampNow);
         StartI := FolderSepI + 1;
       end;
   until FolderSepI < 0;
@@ -1020,7 +1021,7 @@ begin
       exit
     else
       SubKey := Copy(KeyPath, StartI + 1, KeyLen - StartI);
-  InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, LNow);
+  InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, TimestampNow);
 end;
 
 const
@@ -1488,7 +1489,7 @@ begin
   if HashRec.ValueType = hfrvtFolder then
     raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
   HashRecSetValue(HashRec, Value);
-  HashRec.Timestamp := Now;
+  HashRec.Timestamp := kvTimestampNow;
   FHashFile.SaveRecord(HashRecIdx, HashRec);
 end;
 
@@ -1775,7 +1776,7 @@ begin
   if HashRec.ValueType = hfrvtFolder then
     raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
   HashRecAppendValue(HashRec, Value);
-  HashRec.Timestamp := Now;
+  HashRec.Timestamp := kvTimestampNow;
   FHashFile.SaveRecord(HashRecIdx, HashRec);
 end;
 
