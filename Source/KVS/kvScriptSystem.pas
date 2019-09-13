@@ -1,11 +1,13 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/10  0.01  Initial development }
 { 2018/02/28  0.02  Improve usage of selected database/dataset }
 { 2018/03/01  0.03  Persistent stored procedures and related SysInfo }
 { 2018/03/12  0.04  Improve locking }
+{ 2019/04/19  0.05  CreateDataset record size parameters }
+{ 2019/05/20  0.06  Move SysInfoDataset from TkvSystem to TkvScriptSystem }
 
 {$INCLUDE kvInclude.inc}
 
@@ -88,7 +90,9 @@ type
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; override;
 
     function  CreateDataset(const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean): TkvDataset; override;
+              const UseFolders: Boolean;
+              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset; override;
     procedure DropDataset(const DatabaseName, DatasetName: String); override;
     function  ListOfDatasets(const DatabaseName: String): TkvDictionaryValue; override;
 
@@ -114,6 +118,9 @@ type
               const Value: AkvValue); override;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
+              const Path: String;
+              out Iterator: TkvDatasetIterator): Boolean; override;
+    function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: TkvDatasetIterator): Boolean; override;
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; override;
@@ -185,11 +192,12 @@ type
   private
     FSystem : TkvSystem;
 
-    FScope        : TkvScriptSystemScope;
-    FSessionLock  : TCriticalSection;
-    FSessionList  : array of TkvScriptSession;
-    FExecLock     : TCriticalSection;
-    FDatabaseList : TkvStringHashList;
+    FScope          : TkvScriptSystemScope;
+    FSessionLock    : TCriticalSection;
+    FSessionList    : array of TkvScriptSession;
+    FExecLock       : TCriticalSection;
+    FDatabaseList   : TkvStringHashList;
+    FSysInfoDataset : TkvDataset;
 
     procedure SessionLock;
     procedure SessionUnlock;
@@ -223,7 +231,9 @@ type
 
     function  CreateDataset(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean): TkvDataset;
+              const UseFolders: Boolean;
+              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset;
     procedure DropDataset(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String);
     function  ListOfDatasets(const Session: TkvScriptSession;
@@ -290,6 +300,10 @@ type
               const Key: String; const Value: AkvValue); overload;
 
     function  IterateRecords(const Session: TkvScriptSession;
+              const DatabaseName, DatasetName: String;
+              const Path: String;
+              out Iterator: TkvDatasetIterator): Boolean;
+    function  IterateFolders(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: TkvDatasetIterator): Boolean;
@@ -430,10 +444,12 @@ begin
 end;
 
 function TkvScriptSession.CreateDataset(const DatabaseName, DatasetName: String;
-         const UseFolders: Boolean): TkvDataset;
+         const UseFolders: Boolean;
+         const KeyBlobRecordSize: Word32;
+         const ValBlobRecordSize: Word32): TkvDataset;
 begin
   Result := FSystem.CreateDataset(self, UsedDatabaseName(DatabaseName), DatasetName,
-      UseFolders);
+      UseFolders, KeyBlobRecordSize, ValBlobRecordSize);
 end;
 
 procedure TkvScriptSession.DropDataset(const DatabaseName, DatasetName: String);
@@ -597,6 +613,12 @@ function TkvScriptSession.IterateRecords(const DatabaseName, DatasetName: String
          const Path: String; out Iterator: TkvDatasetIterator): Boolean;
 begin
   Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path, Iterator);
+end;
+
+function TkvScriptSession.IterateFolders(const DatabaseName, DatasetName: String;
+         const Path: String; out Iterator: TkvDatasetIterator): Boolean;
+begin
+  Result := FSystem.IterateFolders(self, DatabaseName, DatasetName, Path, Iterator);
 end;
 
 function TkvScriptSession.IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
@@ -879,16 +901,20 @@ end;
 procedure TkvScriptSystem.Open;
 begin
   FSystem.Open;
+  FSysInfoDataset := FSystem.RequireDatasetByName('_sys', 'info');
   LoadSysInfo;
 end;
 
 procedure TkvScriptSystem.OpenNew;
 begin
   FSystem.OpenNew;
+  FSystem.CreateDatabase('_sys');
+  FSysInfoDataset := FSystem.CreateDataset('_sys', 'info', False);
 end;
 
 procedure TkvScriptSystem.Close;
 begin
+  FSysInfoDataset := nil;
   FSystem.Close;
   FDatabaseList.Clear;
 end;
@@ -1029,7 +1055,7 @@ var
   Db : TkvScriptDatabase;
   SpN : String;
 begin
-  SI := FSystem.SysInfoDataset;
+  SI := FSysInfoDataset;
   if SI.IterateRecords('', It) then
     repeat
       Key := SI.IteratorGetKey(It);
@@ -1076,7 +1102,7 @@ begin
   ExecLock;
   try
     Result := FSystem.CreateDatabase(Name);
-    FSystem.SysInfoDataset.AddRecordNull('db:' + Name);
+    FSysInfoDataset.AddRecordNull('db:' + Name);
     AddScriptDatabase(Name);
   finally
     ExecUnlock;
@@ -1094,7 +1120,7 @@ begin
   Im := Db.FStoredProcList.IterateFirst(It);
   while Assigned(Im) do
     begin
-      FSystem.SysInfoDataset.DeleteRecord('sp:' + DatabaseName + ':' + Im^.Key);
+      FSysInfoDataset.DeleteRecord('sp:' + DatabaseName + ':' + Im^.Key);
       Im := Db.FStoredProcList.IterateNext(It);
     end;
 end;
@@ -1104,7 +1130,7 @@ begin
   ExecLock;
   try
     FSystem.DropDatabase(Name);
-    FSystem.SysInfoDataset.DeleteRecord('db:' + Name);
+    FSysInfoDataset.DeleteRecord('db:' + Name);
     DropDatabaseStoredProcedures(Name);
     RemoveScriptDatabase(Name);
   finally
@@ -1127,8 +1153,11 @@ begin
     ItR := FSystem.IterateFirstDatabase(It);
     while ItR and (I < L) do
       begin
-        D := TkvDictionaryValue.Create;
-        R.Add(It.Key, D);
+        if It.Key <> '_sys' then
+          begin
+            D := TkvDictionaryValue.Create;
+            R.Add(It.Key, D);
+          end;
         ItR := FSystem.IterateNextDatabase(It);
         Inc(I);
       end;
@@ -1151,11 +1180,14 @@ end;
 
 function TkvScriptSystem.CreateDataset(const Session: TkvScriptSession;
          const DatabaseName, DatasetName: String;
-         const UseFolders: Boolean): TkvDataset;
+         const UseFolders: Boolean;
+         const KeyBlobRecordSize: Word32;
+         const ValBlobRecordSize: Word32): TkvDataset;
 begin
   ExecLock;
   try
-    Result := FSystem.CreateDataset(DatabaseName, DatasetName, UseFolders);
+    Result := FSystem.CreateDataset(DatabaseName, DatasetName, UseFolders,
+        KeyBlobRecordSize, ValBlobRecordSize);
   finally
     ExecUnlock;
   end;
@@ -1437,6 +1469,19 @@ begin
   end;
 end;
 
+function TkvScriptSystem.IterateFolders(const Session: TkvScriptSession;
+         const DatabaseName, DatasetName: String;
+         const Path: String;
+         out Iterator: TkvDatasetIterator): Boolean;
+begin
+  ExecLock;
+  try
+    Result := FSystem.IterateFolders(DatabaseName, DatasetName, Path, Iterator);
+  finally
+    ExecUnlock;
+  end;
+end;
+
 function TkvScriptSystem.IterateNextRecord(const Session: TkvScriptSession;
          var Iterator: TkvDatasetIterator): Boolean;
 begin
@@ -1492,7 +1537,7 @@ begin
     Db := GetOrAddScriptDatabase(DatabaseName);
     Db.AddStoredProc(ProcedureName, Script);
 
-    FSystem.SysInfoDataset.AddRecordString(
+    FSysInfoDataset.AddRecordString(
         'sp:' + DatabaseName + ':' + ProcedureName,
         Script);
   finally
@@ -1512,7 +1557,7 @@ begin
       raise EkvSession.CreateFmt('Database not found: %s', [DatabaseName]);
     Db.RemoveStoredProc(ProcedureName);
 
-    FSystem.SysInfoDataset.DeleteRecord(
+    FSysInfoDataset.DeleteRecord(
         'sp:' + DatabaseName + ':' + ProcedureName);
   finally
     ExecUnlock;

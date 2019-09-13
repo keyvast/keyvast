@@ -1,5 +1,5 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/07  0.01  Initial development }
@@ -12,6 +12,8 @@
 { 2018/03/14  0.07  Blob file truncate }
 { 2018/04/11  0.08  Blob file 64-bit indexes }
 { 2018/04/11  0.09  Hash file 64-bit indexes }
+{ 2019/04/19  0.10  Initialise header before CreateFile in OpenNew }
+{ 2019/09/11  0.11  WriteChain/TruncateChainAt add records to free list when unused }
 
 {$INCLUDE kvInclude.inc}
 
@@ -40,6 +42,9 @@ type
   AkvFile = class
   protected
     procedure LogWarning(const Txt: String);
+  public
+    destructor Destroy; override;
+    procedure Finalise; virtual;
   end;
 
 
@@ -68,7 +73,7 @@ type
 
   public
     constructor Create(const Path, SystemName: String);
-    destructor Destroy; override;
+    procedure Finalise; override;
 
     property  FileName: String read FFileName;
 
@@ -109,7 +114,7 @@ type
 
   public
     constructor Create(const Path, SystemName: String);
-    destructor Destroy; override;
+    procedure Finalise; override;
 
     procedure OpenNew;
     procedure Open;
@@ -150,7 +155,7 @@ type
 
   public
     constructor Create(const Path, SystemName, DatabaseName: String);
-    destructor Destroy; override;
+    procedure Finalise; override;
 
     procedure OpenNew;
     procedure Open;
@@ -169,6 +174,11 @@ type
 
 
 { TkvHashFile }
+
+const
+  KV_HashFile_DefaultCacheEntries = KV_HashFile_LevelSlotCount * KV_HashFile_LevelSlotCount;
+  KV_HashFile_MinCacheEntries     = 0;
+  KV_HashFile_MaxCacheEntries     = 262144;
 
 type
   TkvHashFile = class(AkvFile)
@@ -195,9 +205,8 @@ type
 
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName: String;
-                const CacheEntries: Integer =
-                    KV_HashFile_LevelSlotCount * KV_HashFile_LevelSlotCount);
-    destructor Destroy; override;
+                const CacheEntries: Integer = KV_HashFile_DefaultCacheEntries);
+    procedure Finalise; override;
 
     procedure OpenNew;
     procedure Open;
@@ -247,7 +256,7 @@ type
 
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName, BlobName: String);
-    destructor Destroy; override;
+    procedure Finalise; override;
 
     procedure OpenNew(const RecordSize: Integer);
     procedure Open;
@@ -274,7 +283,14 @@ type
 
 
 
+{ Helper functions }
+
+procedure PathEnsureSuffix(var Path: String);
+
+
+
 implementation
+
 
 
 
@@ -293,9 +309,18 @@ end;
 
 { AkvFile }
 
+destructor AkvFile.Destroy;
+begin
+  Finalise;
+  inherited Destroy;
+end;
+
+procedure AkvFile.Finalise;
+begin
+end;
+
 procedure AkvFile.LogWarning(const Txt: String);
 begin
-
 end;
 
 
@@ -315,10 +340,10 @@ begin
   FFileName := FPath + FSystemName + '.kvsys';
 end;
 
-destructor TkvSystemFile.Destroy;
+procedure TkvSystemFile.Finalise;
 begin
   FreeAndNil(FFile);
-  inherited Destroy;
+  inherited Finalise;
 end;
 
 function TkvSystemFile.Exists: Boolean;
@@ -328,8 +353,8 @@ end;
 
 procedure TkvSystemFile.OpenNew(const UserDataStr: String);
 begin
-  CreateFile;
   InitHeader(UserDataStr);
+  CreateFile;
   FFileHeader.LastOpenTime := Now;
   SaveHeader;
 end;
@@ -448,15 +473,16 @@ begin
   FFileName := FPath + FSystemName + '.kvdbl';
 end;
 
-destructor TkvDatabaseListFile.Destroy;
+procedure TkvDatabaseListFile.Finalise;
 begin
-  inherited Destroy;
+  FreeAndNil(FFile);
+  inherited Finalise;
 end;
 
 procedure TkvDatabaseListFile.OpenNew;
 begin
-  CreateFile;
   InitHeader;
+  CreateFile;
   SaveHeader;
 end;
 
@@ -608,15 +634,16 @@ begin
   FFileName := FPath + FSystemName + '.' + FDatabaseName + '.kvdsl';
 end;
 
-destructor TkvDatasetListFile.Destroy;
+procedure TkvDatasetListFile.Finalise;
 begin
-  inherited Destroy;
+  FreeAndNil(FFile);
+  inherited Finalise;
 end;
 
 procedure TkvDatasetListFile.OpenNew;
 begin
-  CreateFile;
   InitHeader;
+  CreateFile;
   SaveHeader;
 end;
 
@@ -763,7 +790,8 @@ begin
     raise EkvFile.Create('Database name required');
   if DatasetName = '' then
     raise EkvFile.Create('Dataset name required');
-  if (CacheEntries < 0) or (CacheEntries > 262144) then
+  if (CacheEntries < KV_HashFile_MinCacheEntries) or
+     (CacheEntries > KV_HashFile_MaxCacheEntries) then
     raise EkvFile.Create('Invalid cache entries value');
 
   inherited Create;
@@ -782,15 +810,16 @@ begin
   FFileName := FPath + FSystemName + '.' + FDatabaseName + '.' + FDatasetName + '.kvh';
 end;
 
-destructor TkvHashFile.Destroy;
+procedure TkvHashFile.Finalise;
 begin
-  inherited Destroy;
+  FreeAndNil(FFile);
+  inherited Finalise;
 end;
 
 procedure TkvHashFile.OpenNew;
 begin
-  CreateFile;
   InitHeader;
+  CreateFile;
   AllocateSlotRecords;
   SaveHeader;
 end;
@@ -1025,15 +1054,16 @@ begin
   FFileName := FPath + FSystemName + '.' + FDatabaseName + '.' + FDatasetName + '.' + FBlobName + '.kvbl';
 end;
 
-destructor TkvBlobFile.Destroy;
+procedure TkvBlobFile.Finalise;
 begin
-  inherited Destroy;
+  FreeAndNil(FFile);
+  inherited Finalise;
 end;
 
 procedure TkvBlobFile.OpenNew(const RecordSize: Integer);
 begin
-  CreateFile;
   InitHeader(RecordSize);
+  CreateFile;
   SaveHeader;
 end;
 
@@ -1092,7 +1122,7 @@ begin
      (FFileHeader.HeaderSize <> KV_BlobFile_HeaderSize) then
     raise EkvFile.Create('Blob file corrupt: Invalid header');
 
-  if (FFileHeader.RecordSize < KV_BlobFile_RecordHeaderSize) or
+  if (FFileHeader.RecordSize < KV_BlobFile_MinRecordSize) or
      (FFileHeader.RecordSize mod KV_BlobFile_RecordSizeMultiple <> 0) then
     raise EkvFile.Create('Blob file corrupt: Invalid record size');
 end;
@@ -1235,10 +1265,13 @@ begin
     else
       begin
         Assert(PrevRecIdx <> KV_BlobFile_InvalidIndex);
-        PrevRecHdr.NextRecordIndex := RecIdx;
-        SaveRecordHeader(PrevRecIdx, PrevRecHdr);
         if RecCnt = 2 then
-          FirstRecHdr := PrevRecHdr;
+          FirstRecHdr.NextRecordIndex := RecIdx
+        else
+          begin
+            PrevRecHdr.NextRecordIndex := RecIdx;
+            SaveRecordHeader(PrevRecIdx, PrevRecHdr);
+          end;
       end;
 
     if Remain > 0 then
@@ -1341,6 +1374,9 @@ var
   DataP : PByte;
   DataSize : Integer;
   HdrChanged : Boolean;
+  FreeRecIdx : Word64;
+  NextFreeRecIdx : Word64;
+  FreeRecHdr : TkvBlobFileRecordHeader;
 begin
   Assert(Assigned(FFile));
   Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
@@ -1374,11 +1410,13 @@ begin
         if NewRecIdx = KV_BlobFile_InvalidIndex then
           begin
             NewRecIdx := AllocateRecord(NewRecHdr);
-            RecHdr.NextRecordIndex := NewRecIdx;
-            SaveRecordHeader(RecIdx, RecHdr);
             if RecIdx = FirstRecIdx then
-              FirstRecHdr := RecHdr;
-            FirstRecHdr.LastRecordIndex := NewRecIdx;
+              FirstRecHdr.NextRecordIndex := NewRecIdx
+            else
+              begin
+                RecHdr.NextRecordIndex := NewRecIdx;
+                SaveRecordHeader(RecIdx, RecHdr);
+              end;
             SaveRecordHeader(NewRecIdx, NewRecHdr);
             RecHdr := NewRecHdr;
             HdrChanged := True;
@@ -1391,6 +1429,29 @@ begin
         RecIdx := NewRecIdx;
       end;
   until Remain = 0;
+
+  FreeRecIdx := RecHdr.NextRecordIndex;
+  if FreeRecIdx <> KV_BlobFile_InvalidIndex then
+    begin
+      if RecIdx = FirstRecIdx then
+        FirstRecHdr.NextRecordIndex := KV_BlobFile_InvalidIndex
+      else
+        begin
+          RecHdr.NextRecordIndex := KV_BlobFile_InvalidIndex;
+          SaveRecordHeader(RecIdx, RecHdr);
+        end;
+
+      repeat
+        LoadRecordHeader(FreeRecIdx, FreeRecHdr);
+        NextFreeRecIdx := FreeRecHdr.NextRecordIndex;
+        FreeRecHdr.NextRecordIndex := FFileHeader.FreeRecordIndex;
+        SaveRecordHeader(FreeRecIdx, FreeRecHdr);
+        FFileHeader.FreeRecordIndex := FreeRecIdx;
+        Inc(FFileHeader.FreeRecordCount);
+        FreeRecIdx := NextFreeRecIdx;
+      until FreeRecIdx = KV_BlobFile_InvalidIndex;
+      HdrChanged := True;
+    end;
 
   FirstRecHdr.ChainSize := BufSize;
   FirstRecHdr.LastRecordIndex := RecIdx;
@@ -1538,21 +1599,75 @@ begin
   FFile.WriteBuffer(Buf, BufSize);
 end;
 
-procedure TkvBlobFile.TruncateChainAt(const RecordIndex: Word64; const Size: Integer);
+procedure TkvBlobFile.TruncateChainAt(const RecordIndex: Word64; const Size: Integer); // Not used
 var
+  RecIdx : Word64;
   RecHdr : TkvBlobFileRecordHeader;
+  FirstRecIdx : Word64;
+  FirstRecHdr : TkvBlobFileRecordHeader;
+  RecDataSize : Integer;
+  Remain : Integer;
+  HdrChanged : Boolean;
+  FreeRecIdx : Word64;
+  NextFreeRecIdx : Word64;
+  FreeRecHdr : TkvBlobFileRecordHeader;
 begin
   Assert(Assigned(FFile));
   Assert(RecordIndex <> KV_BlobFile_InvalidIndex);
   if Size < 0 then
     raise EkvFile.Create('Invalid chain size');
 
-  LoadRecordHeader(RecordIndex, RecHdr);
+  RecIdx := RecordIndex;
+  LoadRecordHeader(RecIdx, RecHdr);
   if Word32(Size) > RecHdr.ChainSize then
     raise EkvFile.Create('Invalid size: Larger than chain size');
+  if Word32(Size) = RecHdr.ChainSize then
+    exit;
 
-  RecHdr.ChainSize := Size;
-  SaveRecordHeader(RecordIndex, RecHdr);
+  FirstRecIdx := RecIdx;
+  FirstRecHdr := RecHdr;
+
+  RecDataSize := GetRecordDataSize;
+  Remain := Size;
+  while Remain > RecDataSize do
+    begin
+      Dec(Remain, RecDataSize);
+      RecIdx := RecHdr.NextRecordIndex;
+      if RecIdx = KV_BlobFile_InvalidIndex then
+        raise EkvFile.Create('Blob file corrupt: Invalid record header');
+      LoadRecordHeader(RecIdx, RecHdr);
+    end;
+
+  HdrChanged := False;
+  FreeRecIdx := RecHdr.NextRecordIndex;
+  if FreeRecIdx <> KV_BlobFile_InvalidIndex then
+    begin
+      if RecIdx = FirstRecIdx then
+        FirstRecHdr.NextRecordIndex := KV_BlobFile_InvalidIndex
+      else
+        begin
+          RecHdr.NextRecordIndex := KV_BlobFile_InvalidIndex;
+          SaveRecordHeader(RecIdx, RecHdr);
+        end;
+
+      repeat
+        LoadRecordHeader(FreeRecIdx, FreeRecHdr);
+        NextFreeRecIdx := FreeRecHdr.NextRecordIndex;
+        FreeRecHdr.NextRecordIndex := FFileHeader.FreeRecordIndex;
+        SaveRecordHeader(FreeRecIdx, FreeRecHdr);
+        FFileHeader.FreeRecordIndex := FreeRecIdx;
+        Inc(FFileHeader.FreeRecordCount);
+        FreeRecIdx := NextFreeRecIdx;
+      until FreeRecIdx = KV_BlobFile_InvalidIndex;
+      HdrChanged := True;
+    end;
+
+  FirstRecHdr.LastRecordIndex := RecIdx;
+  FirstRecHdr.ChainSize := Size;
+  SaveRecordHeader(FirstRecIdx, FirstRecHdr);
+
+  if HdrChanged then
+    SaveHeader;
 end;
 
 

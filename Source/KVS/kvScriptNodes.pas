@@ -1,5 +1,5 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/10  0.01  Initial development }
@@ -814,15 +814,21 @@ type
 
   { Iterate statement }
 
+  TkvScriptIterateStatementType = (
+      sistIterateRecords,
+      sistIterateFolders
+    );
   TkvScriptIterateStatement = class(AkvScriptStatement)
   private
+    FIterateType : TkvScriptIterateStatementType;
     FDatabaseName : String;
     FDatasetName : String;
     FKeyPath : String;
     FIdentifier : String;
 
   public
-    constructor Create(const DatabaseName, DatasetName, KeyPath, Identifier: String);
+    constructor Create(const IterateType: TkvScriptIterateStatementType;
+                const DatabaseName, DatasetName, KeyPath, Identifier: String);
 
     function  Duplicate: AkvScriptNode; override;
     function  GetAsString: String; override;
@@ -3577,11 +3583,13 @@ end;
 { TkvScriptIterateStatement }
 
 constructor TkvScriptIterateStatement.Create(
+            const IterateType: TkvScriptIterateStatementType;
             const DatabaseName, DatasetName, KeyPath, Identifier: String);
 begin
   Assert(Identifier <> '');
 
   inherited Create;
+  FIterateType := IterateType;
   FDatabaseName := DatabaseName;
   FDatasetName := DatasetName;
   FKeyPath := KeyPath;
@@ -3592,7 +3600,10 @@ function TkvScriptIterateStatement.GetAsString: String;
 var
   S : String;
 begin
-  S := 'ITERATE ';
+  if FIterateType = sistIterateRecords then
+    S := 'ITERATE_RECORDS '
+  else
+    S := 'ITERATE_FOLDERS ';
   if FDatabaseName <> '' then
     S := S + FDatabaseName + ':';
   S := S + FDatasetName + ' ' + FIdentifier;
@@ -3602,7 +3613,7 @@ end;
 function TkvScriptIterateStatement.Duplicate: AkvScriptNode;
 begin
   Result := TkvScriptIterateStatement.Create(
-      FDatabaseName, FDatasetName, FKeyPath, FIdentifier);
+      FIterateType, FDatabaseName, FDatasetName, FKeyPath, FIdentifier);
 end;
 
 function TkvScriptIterateStatement.Execute(const Context: TkvScriptContext): AkvValue;
@@ -3614,7 +3625,10 @@ var
 begin
   DbN := kvResolveVariableKey(Context, FDatabaseName);
   DsN := kvResolveVariableKey(Context, FDatasetName);
-  Context.Session.IterateRecords(DbN, DsN, FKeyPath, Iterator);
+  if FIterateType = sistIterateRecords then
+    Context.Session.IterateRecords(DbN, DsN, FKeyPath, Iterator)
+  else
+    Context.Session.IterateFolders(DbN, DsN, FKeyPath, Iterator);
   ItVal := TkvDatasetIteratorValue.Create(Iterator);
   Context.Scope.SetIdentifier(FIdentifier, ItVal);
   Result := nil;

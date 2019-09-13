@@ -1,5 +1,5 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/10  0.01  Initial development (use, create, insert, delete, update) }
@@ -18,6 +18,7 @@
 { 2018/04/09  0.14  SETPATHS statement }
 { 2018/04/10  0.15  ITERATOR_TIMESTAMP expression }
 { 2018/04/16  0.16  WITH_FOLDERS, WITHOUT_FOLDERS specifiers }
+{ 2019/06/10  0.08  ITERATE_FOLDERS }
 
 {$INCLUDE kvInclude.inc}
 
@@ -102,6 +103,7 @@ type
       stLIST_OF_DATASETS,
 
       stITERATE_RECORDS,
+      stITERATE_FOLDERS,
       stITERATE_NEXT,
       stITERATOR_KEY,
       stITERATOR_VALUE,
@@ -195,7 +197,7 @@ type
     function  ParseSetStatement: TkvScriptSetStatement;
     function  ParseEvalStatement: TkvScriptEvalStatement;
     function  ParseWhileStatement: TkvScriptWhileStatement;
-    function  ParseIterateRecordsStatement: AkvScriptStatement;
+    function  ParseIterateStatement: AkvScriptStatement;
     function  ParseIterateNextStatement: AkvScriptStatement;
     function  ParseReturnStatement: AkvScriptStatement;
     function  ParseExecStatement: AkvScriptStatement;
@@ -218,7 +220,7 @@ uses
 { TkvScriptParser }
 
 const
-  kvScriptKeywordCount = 44;
+  kvScriptKeywordCount = 45;
   kvScriptKeyword : array[0..kvScriptKeywordCount - 1] of String = (
       'CREATE',
       'DROP',
@@ -245,6 +247,7 @@ const
       'LIST_OF_DATABASES',
       'LIST_OF_DATASETS',
       'ITERATE_RECORDS',
+      'ITERATE_FOLDERS',
       'ITERATE_NEXT',
       'ITERATOR_KEY',
       'ITERATOR_VALUE',
@@ -291,6 +294,7 @@ const
       stLIST_OF_DATABASES,
       stLIST_OF_DATASETS,
       stITERATE_RECORDS,
+      stITERATE_FOLDERS,
       stITERATE_NEXT,
       stITERATOR_KEY,
       stITERATOR_VALUE,
@@ -1703,14 +1707,16 @@ begin
   Result := TkvScriptWhileStatement.Create(Cond, Stmt);
 end;
 
-function TkvScriptParser.ParseIterateRecordsStatement: AkvScriptStatement;
+function TkvScriptParser.ParseIterateStatement: AkvScriptStatement;
 var
+  IterateToken : TkvScriptToken;
   KeyDatabase : String;
   KeyDataset : String;
   KeyRec : String;
   KeyIdentifier : String;
 begin
-  Assert(FToken = stITERATE_RECORDS);
+  Assert(FToken in [stITERATE_RECORDS, stITERATE_FOLDERS]);
+  IterateToken := FToken;
   SkipWhitespace;
   GetNextTokenAsKey;
 
@@ -1732,8 +1738,12 @@ begin
   GetNextToken;
   KeyIdentifier := ExpectIdentifier;
 
-  Result := TkvScriptIterateStatement.Create(KeyDatabase, KeyDataset, KeyRec,
-      KeyIdentifier);
+  if IterateToken = stITERATE_RECORDS then
+    Result := TkvScriptIterateStatement.Create(sistIterateRecords,
+        KeyDatabase, KeyDataset, KeyRec, KeyIdentifier)
+  else
+    Result := TkvScriptIterateStatement.Create(sistIterateFolders,
+        KeyDatabase, KeyDataset, KeyRec, KeyIdentifier)
 end;
 
 function TkvScriptParser.ParseIterateNextStatement: AkvScriptStatement;
@@ -1774,23 +1784,24 @@ end;
 function TkvScriptParser.ParseStatement: AkvScriptStatement;
 begin
   case FToken of
-    stUSE             : Result := ParseUseStatement;
-    stCREATE          : Result := ParseCreateStatement;
-    stDROP            : Result := ParseDropStatement;
-    stINSERT          : Result := ParseInsertStatement;
-    stDELETE          : Result := ParseDeleteStatement;
-    stUPDATE          : Result := ParseUpdateStatement;
-    stAPPEND          : Result := ParseAppendStatement;
-    stMKPATH          : Result := ParseMakePathStatement;
-    stIF              : Result := ParseIfStatement;
-    stBEGIN           : Result := ParseBlockStatement;
-    stSET             : Result := ParseSetStatement;
-    stEVAL            : Result := ParseEvalStatement;
-    stWHILE           : Result := ParseWhileStatement;
-    stITERATE_RECORDS : Result := ParseIterateRecordsStatement;
-    stITERATE_NEXT    : Result := ParseIterateNextStatement;
-    stRETURN          : Result := ParseReturnStatement;
-    stEXEC            : Result := ParseExecStatement;
+    stUSE              : Result := ParseUseStatement;
+    stCREATE           : Result := ParseCreateStatement;
+    stDROP             : Result := ParseDropStatement;
+    stINSERT           : Result := ParseInsertStatement;
+    stDELETE           : Result := ParseDeleteStatement;
+    stUPDATE           : Result := ParseUpdateStatement;
+    stAPPEND           : Result := ParseAppendStatement;
+    stMKPATH           : Result := ParseMakePathStatement;
+    stIF               : Result := ParseIfStatement;
+    stBEGIN            : Result := ParseBlockStatement;
+    stSET              : Result := ParseSetStatement;
+    stEVAL             : Result := ParseEvalStatement;
+    stWHILE            : Result := ParseWhileStatement;
+    stITERATE_RECORDS,
+    stITERATE_FOLDERS  : Result := ParseIterateStatement;
+    stITERATE_NEXT     : Result := ParseIterateNextStatement;
+    stRETURN           : Result := ParseReturnStatement;
+    stEXEC             : Result := ParseExecStatement;
   else
     Result := nil;
   end;

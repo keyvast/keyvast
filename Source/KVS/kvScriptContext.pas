@@ -1,8 +1,9 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/23  0.01  Initial version with Scope and Session }
+{ 2019/04/19  0.02  CreateDataset record size parameters }
 
 {$INCLUDE kvInclude.inc}
 
@@ -47,7 +48,9 @@ type
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; virtual; abstract;
 
     function  CreateDataset(const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean): TkvDataset; virtual; abstract;
+              const UseFolders: Boolean;
+              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset; virtual; abstract;
     procedure DropDataset(const DatabaseName, DatasetName: String); virtual; abstract;
     function  ListOfDatasets(const DatabaseName: String): TkvDictionaryValue; virtual; abstract;
 
@@ -73,6 +76,9 @@ type
               const Value: AkvValue); virtual; abstract;
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
+              const Path: String;
+              out Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
+    function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
     function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; virtual; abstract;

@@ -1,5 +1,5 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/07  0.01  Initial development }
@@ -14,6 +14,7 @@
 {                   compatibility) and add Timestamp field }
 { 2018/04/11  0.08  Change hash record and blob record to handle 64 bit indexes }
 {                   (breaks compatibility) and reserve for 64 bit size }
+{ 2019/04/19  0.09  Add blob record sizes in dataset record }
 
 {$INCLUDE kvInclude.inc}
 
@@ -204,22 +205,27 @@ type
       dslfrfDeleted
     );
   TkvDatasetListFileRecord = packed record
-    Magic        : Word32;
-    Version      : Word32;
-    Flags        : TkvDatasetListFileRecordFlags;
-    NameLength   : Word32;
-    Name         : array[0..KV_DatasetName_MaxLength - 1] of WideChar;
-    CreationTime : TDateTime;
-    UseFolders   : Boolean;
-    Reserved     : array[0..873] of Byte;
+    Magic             : Word32;
+    Version           : Word32;
+    Flags             : TkvDatasetListFileRecordFlags;
+    NameLength        : Word32;
+    Name              : array[0..KV_DatasetName_MaxLength - 1] of WideChar;
+    CreationTime      : TDateTime;
+    UseFolders        : Boolean;
+    KeyBlobRecordSize : Word32;
+    ValBlobRecordSize : Word32;
+    Reserved          : array[0..865] of Byte;
   end;
 
 const
-  KV_DatasetListFile_RecordSize = SizeOf(TkvDatasetListFileRecord);
+  KV_DatasetListFile_RecordSize = SizeOf(TkvDatasetListFileRecord); // 1024
 
 procedure kvInitDatasetListFileRecord(
           var Rec: TkvDatasetListFileRecord;
-          const Name: String; const UseFolders: Boolean);
+          const Name: String;
+          const UseFolders: Boolean;
+          const KeyBlobRecordSize: Word32;
+          const ValBlobRecordSize: Word32);
 
 
 
@@ -229,9 +235,9 @@ procedure kvInitDatasetListFileRecord(
 {   +=======================+                                                  }
 {   | Header                |                                                  }
 {   +=======================+                                                  }
-{   | 64 Slot records       |  Level 1 slots                                   }
+{   | 32 Slot records       |  Level 1 slots                                   }
 {   +-----------------------+                                                  }
-{   | 64 Slot records       |  One of level 2+ slots                           }
+{   | 32 Slot records       |  One of level 2+ slots                           }
 {   +-----------------------+                                                  }
 {   .                       .                                                  }
 {   .                       .                                                  }
@@ -242,10 +248,10 @@ procedure kvInitDatasetListFileRecord(
 {   +--------------------------------------+                                   }
 {   | <Empty>      or                      |                                   }
 {   | Key/Value    or                      |                                   }
-{   | Pointer to next level 64 x Record    |                                   }
+{   | Pointer to next level 32 x Record    |                                   }
 {   +--------------------------------------+                                   }
 {                                                                              }
-{ 64 Slot records example:                                                     }
+{ 32 Slot records example:                                                     }
 {                                                                              }
 {   +-------------+                                                            }
 {   | Key/Value   |                                                            }
@@ -363,9 +369,10 @@ procedure kvInitHashFileRecord(
 {                                                                              }
 
 const
-  KV_BlobFile_MinRecordSize      = 128;
-  KV_BlobFile_RecordSizeMultiple = 128;
   KV_BlobFile_InvalidIndex       = Word64($FFFFFFFFFFFFFFFF);
+
+  KV_BlobFile_MinRecordSize      = 128; // must be KV_BlobFile_RecordHeaderSize (24) + extra for blob data
+  KV_BlobFile_RecordSizeMultiple = 128;
 
 
 
@@ -380,7 +387,7 @@ type
     Magic           : Word32;        // KV_BlobFileHeader_Magic
     Version         : Word32;        // KV_BlobFileHeader_Version
     HeaderSize      : Word32;        // KV_BlobFile_HeaderSize
-    RecordSize      : Word32;
+    RecordSize      : Word32;        // Size of blob file records
     RecordCount     : Word64;
     FreeRecordIndex : Word64;        // Linked list to free records
     FreeRecordCount : Word64;
@@ -390,6 +397,9 @@ type
 
 const
   KV_BlobFile_HeaderSize = SizeOf(TkvBlobFileHeader);
+
+function  kvIsBlobFileRecordSizeValid(const RecordSize: Word32): Boolean;
+procedure kvValidateBlobFileRecordSize(const RecordSize: Word32);
 
 procedure kvInitBlobFileHeader(
           out Header: TkvBlobFileHeader;
@@ -535,7 +545,9 @@ end;
 { Dataset list file record }
 
 procedure kvInitDatasetListFileRecord(var Rec: TkvDatasetListFileRecord;
-          const Name: String; const UseFolders: Boolean);
+          const Name: String; const UseFolders: Boolean;
+          const KeyBlobRecordSize: Word32;
+          const ValBlobRecordSize: Word32);
 var
   L : Integer;
 begin
@@ -552,6 +564,12 @@ begin
 
   Rec.CreationTime := Now;
   Rec.UseFolders := UseFolders;
+
+  kvValidateBlobFileRecordSize(KeyBlobRecordSize);
+  kvValidateBlobFileRecordSize(ValBlobRecordSize);
+
+  Rec.KeyBlobRecordSize := KeyBlobRecordSize;
+  Rec.ValBlobRecordSize := ValBlobRecordSize;
 end;
 
 
@@ -588,11 +606,23 @@ end;
 
 { Blob file header }
 
+function kvIsBlobFileRecordSizeValid(const RecordSize: Word32): Boolean;
+begin
+  Result :=
+    (RecordSize >= KV_BlobFile_MinRecordSize) and
+    (RecordSize mod KV_BlobFile_RecordSizeMultiple = 0);
+end;
+
+procedure kvValidateBlobFileRecordSize(const RecordSize: Word32);
+begin
+  if not kvIsBlobFileRecordSizeValid(RecordSize) then
+    raise EkvStructure.CreateFmt('Invalid record size: %d', [RecordSize]);
+end;
+
 procedure kvInitBlobFileHeader(out Header: TkvBlobFileHeader;
           const RecordSize: Word32);
 begin
-  if (RecordSize < KV_BlobFile_MinRecordSize) or
-     (RecordSize mod KV_BlobFile_RecordSizeMultiple <> 0) then
+  if not kvIsBlobFileRecordSizeValid(RecordSize) then
     raise EkvStructure.CreateFmt('Invalid record size: %d', [RecordSize]);
   FillChar(Header, SizeOf(Header), 0);
   Header.Magic := KV_BlobFileHeader_Magic;

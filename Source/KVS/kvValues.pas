@@ -1,5 +1,5 @@
 { KeyVast - A key value store }
-{ Copyright (c) 2018 KeyVast, David J Butler }
+{ Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
 { 2018/02/09  0.01  Initial version (int, str, float, list, dict) }
@@ -14,6 +14,9 @@
 { 2018/03/05  0.10  Value GetDataBuf function }
 { 2018/03/11  0.11  Decimal128 value }
 { 2018/03/12  0.12  Value operation optimisations }
+{ 2018/09/27  0.13  AddOrSetValue }
+{ 2019/04/19  0.14  CreateInstance class function }
+{ 2019/09/13  0.15  Folder value }
 
 {$INCLUDE kvInclude.inc}
 
@@ -40,6 +43,7 @@ const
   KV_Value_TypeId_List       = $20;
   KV_Value_TypeId_Dictionary = $21;
   KV_Value_TypeId_Set        = $22;
+  KV_Value_TypeId_Folder     = $30;
   KV_Value_TypeId_Other      = $FF;
 
 
@@ -69,6 +73,7 @@ type
     function  GetTypeId: Byte; virtual;
     function  GetSerialSize: Integer; virtual;
   public
+    class function CreateInstance: AkvValue; virtual; abstract;
     function  Duplicate: AkvValue; virtual; abstract;
     property  AsString: String read GetAsString write SetAsString;
     property  AsScript: String read GetAsScript;
@@ -85,6 +90,7 @@ type
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; virtual;
     procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); virtual;
   end;
+  TkvValueClass = class of AkvValue;
   TkvValueArray = array of AkvValue;
 
   TkvIntegerValue = class(AkvValue)
@@ -103,6 +109,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: Int64); overload;
     property  Value: Int64 read FValue write FValue;
@@ -129,6 +136,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: String); overload;
     property  Value: String read FValue write FValue;
@@ -151,6 +159,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: Double); overload;
     property  Value: Double read FValue write FValue;
@@ -172,6 +181,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: Boolean); overload;
     property  Value: Boolean read FValue write FValue;
@@ -192,6 +202,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: TDateTime); overload;
     property  Value: TDateTime read FValue write FValue;
@@ -213,6 +224,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: kvByteArray); overload;
     constructor Create(const Value: Byte); overload;
@@ -222,12 +234,36 @@ type
     procedure GetDataBuf(out Buf: Pointer; out BufSize: Integer); override;
   end;
 
+  TkvDecimal128Value = class(AkvValue)
+  private
+    FValue : SDecimal128;
+  protected
+    function  GetAsString: String; override;
+    function  GetAsFloat: Double; override;
+    function  GetAsInteger: Int64; override;
+    function  GetAsDecimal128: SDecimal128; override;
+    procedure SetAsString(const A: String); override;
+    procedure SetAsInteger(const A: Int64); override;
+    procedure SetAsFloat(const A: Double); override;
+    procedure SetAsDecimal128(const A: SDecimal128); override;
+    function  GetTypeId: Byte; override;
+    function  GetSerialSize: Integer; override;
+  public
+    class function CreateInstance: AkvValue; override;
+    constructor Create; overload;
+    constructor Create(const Value: SDecimal128); overload;
+    function  Duplicate: AkvValue; override;
+    function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
+    function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+  end;
+
   TkvNullValue = class(AkvValue)
   protected
     function  GetAsString: String; override;
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
@@ -242,6 +278,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     destructor Destroy; override;
     function  GetCount: Integer;
     function  Duplicate: AkvValue; override;
@@ -272,6 +309,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create;
     destructor Destroy; override;
     procedure Clear;
@@ -289,6 +327,7 @@ type
     procedure AddFloat(const Key: String; const Value: Double);
     procedure AddInteger(const Key: String; const Value: Int64);
     procedure AddDateTime(const Key: String; const Value: TDateTime);
+    procedure AddBinary(const Key: String; const Value: kvByteArray);
     procedure AddNull(const Key: String);
     function  Exists(const Key: String): Boolean;
     function  IsValueNull(const Key: String): Boolean;
@@ -298,12 +337,32 @@ type
     function  GetValueAsFloat(const Key: String): Double;
     function  GetValueAsInteger(const Key: String): Int64;
     function  GetValueAsDateTime(const Key: String): TDateTime;
+    function  GetValueAsBinary(const Key: String): kvByteArray;
+    function  GetValueIfExists(const Key: String): AkvValue;
+    function  GetValueAsStringDef(const Key: String; const ADefault: String = ''): String;
+    function  GetValueAsBooleanDef(const Key: String; const ADefault: Boolean = False): Boolean;
+    function  GetValueAsFloatDef(const Key: String; const ADefault: Double = 0.0): Double;
+    function  GetValueAsIntegerDef(const Key: String; const ADefault: Int64 = 0): Int64;
+    function  GetValueAsDateTimeDef(const Key: String; const ADefault: TDateTime = 0.0): TDateTime;
+    function  GetValueAsBinaryDef(const Key: String; const ADefault: kvByteArray = nil): kvByteArray;
+    procedure SetValueAsString(const Key: String; const Value: String);
+    procedure SetValueAsBoolean(const Key: String; const Value: Boolean);
+    procedure SetValueAsInteger(const Key: String; const Value: Int64);
+    procedure SetValueAsDateTime(const Key: String; const Value: TDateTime);
+    procedure SetValueAsBinary(const Key: String; const Value: kvByteArray);
     procedure SetValue(const Key: String; const Value: AkvValue);
     procedure SetValueString(const Key: String; const Value: String);
     procedure SetValueBoolean(const Key: String; const Value: Boolean);
     procedure SetValueInteger(const Key: String; const Value: Int64);
     procedure SetValueDateTime(const Key: String; const Value: TDateTime);
+    procedure SetValueBinary(const Key: String; const Value: kvByteArray);
     procedure SetValueNull(const Key: String);
+    procedure AddOrSetValue(const Key: String; const Value: AkvValue);
+    procedure AddOrSetValueString(const Key: String; const Value: String);
+    procedure AddOrSetValueBoolean(const Key: String; const Value: Boolean);
+    procedure AddOrSetValueInteger(const Key: String; const Value: Int64);
+    procedure AddOrSetValueDateTime(const Key: String; const Value: TDateTime);
+    procedure AddOrSetValueBinary(const Key: String; const Value: kvByteArray);
     procedure DeleteKey(const Key: String);
     function  ReleaseKey(const Key: String): TObject;
     function  IterateFirst(out Iterator: TkvDictionaryValueIterator): Boolean;
@@ -321,6 +380,7 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
+    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: TkvStringHashList); overload;
     destructor Destroy; override;
@@ -335,32 +395,18 @@ type
     procedure DeleteSet(const Value: TkvSetValue);
   end;
 
-  TkvDecimal128Value = class(AkvValue)
-  private
-    FValue : SDecimal128;
+  TkvFolderValue = class(TkvDictionaryValue)
   protected
-    function  GetAsString: String; override;
-    function  GetAsFloat: Double; override;
-    function  GetAsInteger: Int64; override;
-    function  GetAsDecimal128: SDecimal128; override;
-    procedure SetAsString(const A: String); override;
-    procedure SetAsInteger(const A: Int64); override;
-    procedure SetAsFloat(const A: Double); override;
-    procedure SetAsDecimal128(const A: SDecimal128); override;
-    function  GetTypeId: Byte; override;
-    function  GetSerialSize: Integer; override;
+    function GetTypeId: Byte; override;
   public
-    constructor Create; overload;
-    constructor Create(const Value: SDecimal128); overload;
-    function  Duplicate: AkvValue; override;
-    function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
-    function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
+    class function CreateInstance: AkvValue; override;
   end;
 
 
 
 { Factory function }
 
+function kvGetValueClassFromTypeId(const TypeId: Integer): TkvValueClass;
 function kvCreateValueFromTypeId(const TypeId: Integer): AkvValue;
 
 
@@ -413,7 +459,9 @@ function kvTimestampNow: Int64;
 implementation
 
 uses
-  StrUtils;
+  StrUtils,
+
+  System.DateUtils;
 
 
 
@@ -483,6 +531,26 @@ end;
 
 { Factory function }
 
+function kvGetValueClassFromTypeId(const TypeId: Integer): TkvValueClass;
+begin
+  case TypeId of
+    KV_Value_TypeId_Integer    : Result := TkvIntegerValue;
+    KV_Value_TypeId_String     : Result := TkvStringValue;
+    KV_Value_TypeId_Float      : Result := TkvFloatValue;
+    KV_Value_TypeId_Boolean    : Result := TkvBooleanValue;
+    KV_Value_TypeId_DateTime   : Result := TkvDateTimeValue;
+    KV_Value_TypeId_Binary     : Result := TkvBinaryValue;
+    KV_Value_TypeId_Null       : Result := TkvNullValue;
+    KV_Value_TypeId_Decimal128 : Result := TkvDecimal128Value;
+    KV_Value_TypeId_List       : Result := TkvListValue;
+    KV_Value_TypeId_Dictionary : Result := TkvDictionaryValue;
+    KV_Value_TypeId_Set        : Result := TkvSetValue;
+    KV_Value_TypeId_Folder     : Result := TkvFolderValue;
+  else
+    raise EkvValue.Create('Invalid value type id');
+  end;
+end;
+
 function kvCreateValueFromTypeId(const TypeId: Integer): AkvValue;
 begin
   case TypeId of
@@ -497,6 +565,7 @@ begin
     KV_Value_TypeId_List       : Result := TkvListValue.Create;
     KV_Value_TypeId_Dictionary : Result := TkvDictionaryValue.Create;
     KV_Value_TypeId_Set        : Result := TkvSetValue.Create;
+    KV_Value_TypeId_Folder     : Result := TkvFolderValue.Create;
   else
     raise EkvValue.Create('Invalid value type id');
   end;
@@ -610,6 +679,11 @@ end;
 
 { TkvIntegerValue }
 
+class function TkvIntegerValue.CreateInstance: AkvValue;
+begin
+  Result := TkvIntegerValue.Create;
+end;
+
 constructor TkvIntegerValue.Create;
 begin
   inherited Create;
@@ -712,6 +786,11 @@ end;
 
 
 { TkvStringValue }
+
+class function TkvStringValue.CreateInstance: AkvValue;
+begin
+  Result := TkvStringValue.Create;
+end;
 
 constructor TkvStringValue.Create;
 begin
@@ -881,6 +960,11 @@ end;
 
 { TkvFloatValue }
 
+class function TkvFloatValue.CreateInstance: AkvValue;
+begin
+  Result := TkvFloatValue.Create;
+end;
+
 constructor TkvFloatValue.Create;
 begin
   inherited Create;
@@ -968,6 +1052,11 @@ end;
 
 { TkvBooleanValue }
 
+class function TkvBooleanValue.CreateInstance: AkvValue;
+begin
+  Result := TkvBooleanValue.Create;
+end;
+
 constructor TkvBooleanValue.Create;
 begin
   inherited Create;
@@ -1049,6 +1138,11 @@ end;
 
 { TkvDateTimeValue }
 
+class function TkvDateTimeValue.CreateInstance: AkvValue;
+begin
+  Result := TkvDateTimeValue.Create;
+end;
+
 constructor TkvDateTimeValue.Create;
 begin
   inherited Create;
@@ -1120,6 +1214,11 @@ end;
 
 
 { TkvBinaryValue }
+
+class function TkvBinaryValue.CreateInstance: AkvValue;
+begin
+  Result := TkvBinaryValue.Create;
+end;
 
 constructor TkvBinaryValue.Create;
 begin
@@ -1284,7 +1383,105 @@ end;
 
 
 
+{ TkvDecimal128Value }
+
+class function TkvDecimal128Value.CreateInstance: AkvValue;
+begin
+  Result := TkvDecimal128Value.Create;
+end;
+
+constructor TkvDecimal128Value.Create;
+begin
+  inherited Create;
+  SDecimal128InitZero(FValue);
+end;
+
+constructor TkvDecimal128Value.Create(const Value: SDecimal128);
+begin
+  inherited Create;
+  SDecimal128InitSDecimal128(FValue, Value);
+end;
+
+function TkvDecimal128Value.Duplicate: AkvValue;
+begin
+  Result := TkvDecimal128Value.Create(FValue);
+end;
+
+function TkvDecimal128Value.GetAsString: String;
+begin
+  Result := SDecimal128ToStr(FValue);
+end;
+
+function TkvDecimal128Value.GetAsInteger: Int64;
+begin
+  Result := SDecimal128ToInt64(FValue);
+end;
+
+function TkvDecimal128Value.GetAsDecimal128: SDecimal128;
+begin
+  SDecimal128InitSDecimal128(Result, FValue);
+end;
+
+function TkvDecimal128Value.GetAsFloat: Double;
+begin
+  Result := SDecimal128ToFloat(FValue);
+end;
+
+procedure TkvDecimal128Value.SetAsString(const A: String);
+begin
+  if TryStrToSDecimal128(A, FValue) <> dceNoError then
+    raise EkvValue.Create('Type conversion error: Not a valid decimal string');
+end;
+
+procedure TkvDecimal128Value.SetAsInteger(const A: Int64);
+begin
+  SDecimal128InitInt64(FValue, A);
+end;
+
+procedure TkvDecimal128Value.SetAsFloat(const A: Double);
+begin
+  SDecimal128InitFloat(FValue, A);
+end;
+
+procedure TkvDecimal128Value.SetAsDecimal128(const A: SDecimal128);
+begin
+  SDecimal128InitSDecimal128(FValue, A);
+end;
+
+function TkvDecimal128Value.GetTypeId: Byte;
+begin
+  Result := KV_Value_TypeId_Decimal128;
+end;
+
+function TkvDecimal128Value.GetSerialSize: Integer;
+begin
+  Result := SizeOf(SDecimal128);
+end;
+
+function TkvDecimal128Value.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
+begin
+  if BufSize < SizeOf(SDecimal128) then
+    raise EkvValue.Create(SInvalidBufferSize);
+  SDecimal128InitSDecimal128(PSDecimal128(@Buf)^, FValue);
+  Result := SizeOf(SDecimal128);
+end;
+
+function TkvDecimal128Value.PutSerialBuf(const Buf; const BufSize: Integer): Integer;
+begin
+  if BufSize < SizeOf(SDecimal128) then
+    raise EkvValue.Create(SInvalidBufferSize);
+  SDecimal128InitSDecimal128(FValue, PSDecimal128(@Buf)^);
+  Result := SizeOf(SDecimal128);
+end;
+
+
+
 { TkvNullValue }
+
+class function TkvNullValue.CreateInstance: AkvValue;
+begin
+  Result := TkvNullValue.Create;
+end;
 
 function TkvNullValue.Duplicate: AkvValue;
 begin
@@ -1325,6 +1522,11 @@ end;
 
 
 { TkvListValue }
+
+class function TkvListValue.CreateInstance: AkvValue;
+begin
+  Result := TkvListValue.Create;
+end;
 
 destructor TkvListValue.Destroy;
 var
@@ -1572,6 +1774,11 @@ end;
 
 { TkvDictionaryValue }
 
+class function TkvDictionaryValue.CreateInstance: AkvValue;
+begin
+  Result := TkvDictionaryValue.Create;
+end;
+
 constructor TkvDictionaryValue.Create;
 begin
   inherited Create;
@@ -1595,7 +1802,7 @@ var
   Itr : TkvStringHashListIterator;
   Itm : PkvStringHashListItem;
 begin
-  R := TkvDictionaryValue.Create;
+  R := CreateInstance as TkvDictionaryValue;
   Itm := FValue.IterateFirst(Itr);
   while Assigned(Itm) do
     begin
@@ -1837,6 +2044,11 @@ begin
   Add(Key, TkvDateTimeValue.Create(Value));
 end;
 
+procedure TkvDictionaryValue.AddBinary(const Key: String; const Value: kvByteArray);
+begin
+  Add(Key, TkvBinaryValue.Create(Value));
+end;
+
 procedure TkvDictionaryValue.AddNull(const Key: String);
 begin
   Add(Key, TkvNullValue.Create);
@@ -1890,6 +2102,136 @@ begin
   Result := GetValue(Key).AsDateTime;
 end;
 
+function TkvDictionaryValue.GetValueAsBinary(const Key: String): kvByteArray;
+begin
+  Result := GetValue(Key).AsBinary;
+end;
+
+function TkvDictionaryValue.GetValueIfExists(const Key: String): AkvValue;
+var
+  V : TObject;
+begin
+  if not FValue.GetValue(Key, V) then
+    Result := nil
+  else
+    Result := AkvValue(V);
+end;
+
+function TkvDictionaryValue.GetValueAsStringDef(const Key: String; const ADefault: String): String;
+var
+  V : AkvValue;
+begin
+  V := GetValueIfExists(Key);
+  if not Assigned(V) then
+    Result := ADefault
+  else
+    try
+      Result := V.AsString;
+    except
+      Result := ADefault;
+    end;
+end;
+
+function TkvDictionaryValue.GetValueAsBooleanDef(const Key: String; const ADefault: Boolean): Boolean;
+var
+  V : AkvValue;
+begin
+  V := GetValueIfExists(Key);
+  if not Assigned(V) then
+    Result := ADefault
+  else
+    try
+      Result := V.AsBoolean;
+    except
+      Result := ADefault;
+    end;
+end;
+
+function TkvDictionaryValue.GetValueAsFloatDef(const Key: String; const ADefault: Double): Double;
+var
+  V : AkvValue;
+begin
+  V := GetValueIfExists(Key);
+  if not Assigned(V) then
+    Result := ADefault
+  else
+    try
+      Result := V.AsFloat;
+    except
+      Result := ADefault;
+    end;
+end;
+
+function TkvDictionaryValue.GetValueAsIntegerDef(const Key: String; const ADefault: Int64): Int64;
+var
+  V : AkvValue;
+begin
+  V := GetValueIfExists(Key);
+  if not Assigned(V) then
+    Result := ADefault
+  else
+    try
+      Result := V.AsInteger;
+    except
+      Result := ADefault;
+    end;
+end;
+
+function TkvDictionaryValue.GetValueAsDateTimeDef(const Key: String; const ADefault: TDateTime): TDateTime;
+var
+  V : AkvValue;
+begin
+  V := GetValueIfExists(Key);
+  if not Assigned(V) then
+    Result := ADefault
+  else
+    try
+      Result := V.AsDateTime;
+    except
+      Result := ADefault;
+    end;
+end;
+
+function TkvDictionaryValue.GetValueAsBinaryDef(const Key: String; const ADefault: kvByteArray): kvByteArray;
+var
+  V : AkvValue;
+begin
+  V := GetValueIfExists(Key);
+  if not Assigned(V) then
+    Result := ADefault
+  else
+    try
+      Result := V.AsBinary;
+    except
+      Result := ADefault;
+    end;
+end;
+
+procedure TkvDictionaryValue.SetValueAsString(const Key: String; const Value: String);
+begin
+  GetValue(Key).AsString := Value;
+end;
+
+procedure TkvDictionaryValue.SetValueAsBoolean(const Key: String; const Value: Boolean);
+begin
+  GetValue(Key).AsBoolean := Value;
+end;
+
+procedure TkvDictionaryValue.SetValueAsInteger(const Key: String; const Value: Int64);
+begin
+  GetValue(Key).AsInteger := Value;
+end;
+
+procedure TkvDictionaryValue.SetValueAsDateTime(const Key: String; const Value: TDateTime);
+begin
+  GetValue(Key).AsDateTime := Value;
+end;
+
+procedure TkvDictionaryValue.SetValueAsBinary(const Key: String; const Value: kvByteArray);
+begin
+  GetValue(Key).AsBinary := Value;
+end;
+
 procedure TkvDictionaryValue.SetValue(const Key: String; const Value: AkvValue);
 begin
   Assert(Assigned(Value));
@@ -1916,9 +2258,45 @@ begin
   SetValue(Key, TkvDateTimeValue.Create(Value));
 end;
 
+procedure TkvDictionaryValue.SetValueBinary(const Key: String; const Value: kvByteArray);
+begin
+  SetValue(Key, TkvBinaryValue.Create(Value));
+end;
+
 procedure TkvDictionaryValue.SetValueNull(const Key: String);
 begin
   SetValue(Key, TkvNullValue.Create);
+end;
+
+procedure TkvDictionaryValue.AddOrSetValue(const Key: String; const Value: AkvValue);
+begin
+  Assert(Assigned(Value));
+  FValue.AddOrSet(Key, Value);
+end;
+
+procedure TkvDictionaryValue.AddOrSetValueString(const Key: String; const Value: String);
+begin
+  AddOrSetValue(Key, TkvStringValue.Create(Value));
+end;
+
+procedure TkvDictionaryValue.AddOrSetValueBoolean(const Key: String; const Value: Boolean);
+begin
+  AddOrSetValue(Key, TkvBooleanValue.Create(Value));
+end;
+
+procedure TkvDictionaryValue.AddOrSetValueInteger(const Key: String; const Value: Int64);
+begin
+  AddOrSetValue(Key, TkvIntegerValue.Create(Value));
+end;
+
+procedure TkvDictionaryValue.AddOrSetValueDateTime(const Key: String; const Value: TDateTime);
+begin
+  AddOrSetValue(Key, TkvDateTimeValue.Create(Value));
+end;
+
+procedure TkvDictionaryValue.AddOrSetValueBinary(const Key: String; const Value: kvByteArray);
+begin
+  AddOrSetValue(Key, TkvBinaryValue.Create(Value));
 end;
 
 procedure TkvDictionaryValue.DeleteKey(const Key: String);
@@ -1961,6 +2339,11 @@ end;
 
 
 { TkvSetValue }
+
+class function TkvSetValue.CreateInstance: AkvValue;
+begin
+  Result := TkvSetValue.Create;
+end;
 
 constructor TkvSetValue.Create;
 begin
@@ -2176,89 +2559,16 @@ end;
 
 
 
-{ TkvDecimal128Value }
+{ TkvFolderValue }
 
-constructor TkvDecimal128Value.Create;
+class function TkvFolderValue.CreateInstance: AkvValue;
 begin
-  SDecimal128InitZero(FValue);
+  Result := TkvFolderValue.Create;
 end;
 
-constructor TkvDecimal128Value.Create(const Value: SDecimal128);
+function TkvFolderValue.GetTypeId: Byte;
 begin
-  inherited Create;
-  SDecimal128InitSDecimal128(FValue, Value);
-end;
-
-function TkvDecimal128Value.Duplicate: AkvValue;
-begin
-  Result := TkvDecimal128Value.Create(FValue);
-end;
-
-function TkvDecimal128Value.GetAsString: String;
-begin
-  Result := SDecimal128ToStr(FValue);
-end;
-
-function TkvDecimal128Value.GetAsInteger: Int64;
-begin
-  Result := SDecimal128ToInt64(FValue);
-end;
-
-function TkvDecimal128Value.GetAsDecimal128: SDecimal128;
-begin
-  SDecimal128InitSDecimal128(Result, FValue);
-end;
-
-function TkvDecimal128Value.GetAsFloat: Double;
-begin
-  Result := SDecimal128ToFloat(FValue);
-end;
-
-procedure TkvDecimal128Value.SetAsString(const A: String);
-begin
-  if TryStrToSDecimal128(A, FValue) <> dceNoError then
-    raise EkvValue.Create('Type conversion error: Not a valid decimal string');
-end;
-
-procedure TkvDecimal128Value.SetAsInteger(const A: Int64);
-begin
-  SDecimal128InitInt64(FValue, A);
-end;
-
-procedure TkvDecimal128Value.SetAsFloat(const A: Double);
-begin
-  SDecimal128InitFloat(FValue, A);
-end;
-
-procedure TkvDecimal128Value.SetAsDecimal128(const A: SDecimal128);
-begin
-  SDecimal128InitSDecimal128(FValue, A);
-end;
-
-function TkvDecimal128Value.GetTypeId: Byte;
-begin
-  Result := KV_Value_TypeId_Decimal128;
-end;
-
-function TkvDecimal128Value.GetSerialSize: Integer;
-begin
-  Result := SizeOf(SDecimal128);
-end;
-
-function TkvDecimal128Value.GetSerialBuf(var Buf; const BufSize: Integer): Integer;
-begin
-  if BufSize < SizeOf(SDecimal128) then
-    raise EkvValue.Create(SInvalidBufferSize);
-  SDecimal128InitSDecimal128(PSDecimal128(@Buf)^, FValue);
-  Result := SizeOf(SDecimal128);
-end;
-
-function TkvDecimal128Value.PutSerialBuf(const Buf; const BufSize: Integer): Integer;
-begin
-  if BufSize < SizeOf(SDecimal128) then
-    raise EkvValue.Create(SInvalidBufferSize);
-  SDecimal128InitSDecimal128(FValue, PSDecimal128(@Buf)^);
-  Result := SizeOf(SDecimal128);
+  Result := KV_Value_TypeId_Folder;
 end;
 
 
@@ -2325,7 +2635,7 @@ end;
 
 function ValueOpPlus(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
   S : TkvSetValue;
   L : TkvListValue;
   D : SDecimal128;
@@ -2405,7 +2715,7 @@ end;
 
 function ValueOpMinus(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
   S : TkvSetValue;
   D : SDecimal128;
 begin
@@ -2446,7 +2756,7 @@ end;
 
 function ValueOpMultiply(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
   D : SDecimal128;
 begin
   TA := A.TypeId;
@@ -2472,7 +2782,7 @@ end;
 
 function ValueOpDivide(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
   D : SDecimal128;
 begin
   TA := A.TypeId;
@@ -2498,7 +2808,7 @@ end;
 
 function ValueOpOR(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
 begin
   TA := A.TypeId;
   TB := B.TypeId;
@@ -2517,7 +2827,7 @@ end;
 
 function ValueOpXOR(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
 begin
   TA := A.TypeId;
   TB := B.TypeId;
@@ -2536,7 +2846,7 @@ end;
 
 function ValueOpAND(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
 begin
   TA := A.TypeId;
   TB := B.TypeId;
@@ -2605,7 +2915,7 @@ end;
 
 function ValueOpCompare(const A, B: AkvValue): Integer;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
 begin
   Assert(Assigned(A));
   Assert(Assigned(B));
@@ -2648,7 +2958,7 @@ end;
 
 function ValueOpIn(const A, B: AkvValue): Boolean;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
 begin
   Assert(Assigned(A));
   Assert(Assigned(B));
@@ -2658,11 +2968,11 @@ begin
   if TB = KV_Value_TypeId_Set then
     Result := TkvSetValue(B).Exists(A.GetAsString)
   else
-  if TB = KV_Value_TypeId_Dictionary then
+  if TB in [KV_Value_TypeId_Dictionary, KV_Value_TypeId_Folder] then
     Result := TkvDictionaryValue(B).Exists(A.GetAsString)
   else
   if (TB = KV_Value_TypeId_List) and
-     ((TA = KV_Value_TypeId_Integer) or (TA = KV_Value_TypeId_String) or (TA = KV_Value_TypeId_Null)) then
+     (TA in [KV_Value_TypeId_Integer, KV_Value_TypeId_String, KV_Value_TypeId_Null]) then
     Result := TkvListValue(B).HasValue(A)
   else
     raise EkvValue.CreateFmt('Type error: Cannot apply in operator to types: %s and %s',
@@ -2671,7 +2981,7 @@ end;
 
 function ValueOpAppend(const A, B: AkvValue): AkvValue;
 var
-  TA, TB : Integer;
+  TA, TB : Byte;
   L : TkvListValue;
   D : TkvDictionaryValue;
 begin
@@ -2696,9 +3006,9 @@ begin
       Result := L;
     end
   else
-  if TB = KV_Value_TypeId_Dictionary then
+  if TA in [KV_Value_TypeId_Dictionary, KV_Value_TypeId_Folder] then
     begin
-      if not (TB = KV_Value_TypeId_Dictionary) then
+      if not (TB in [KV_Value_TypeId_Dictionary, KV_Value_TypeId_Folder]) then
         raise EkvValue.CreateFmt('Type error: Cannot append types: %s and %s',
            [A.ClassName, B.ClassName]);
       D := TkvDictionaryValue(A.Duplicate);

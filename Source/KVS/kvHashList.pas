@@ -4,6 +4,7 @@
 
 { 2018/02/08  0.01  Initial version }
 { 2018/03/02  0.02  Remove LongWord references }
+{ 2018/09/27  0.03  AddOrSet }
 
 {$INCLUDE kvInclude.inc}
 
@@ -57,17 +58,18 @@ type
     procedure AddToSlot(const SlotIdx: Integer; const Key: String; const Value: TObject);
     procedure ExpandSlots(const NewSlotCount: Integer);
     function  LocateItemIndexBySlot(const SlotIdx: Integer; const Key: String;
-              var Item: PkvStringHashListItem): Integer;
+              out Item: PkvStringHashListItem): Integer;
     function  LocateItemBySlot(const SlotIdx: Integer; const Key: String;
-              var Item: PkvStringHashListItem): Boolean;
+              out Item: PkvStringHashListItem): Boolean;
     function  LocateItem(const Key: String;
-              var Item: PkvStringHashListItem): Boolean;
+              out Item: PkvStringHashListItem): Boolean;
     function  RequireItem(const Key: String): PkvStringHashListItem;
     function  IterateGetNext(var Iterator: TkvStringHashListIterator): PkvStringHashListItem;
 
   public
     constructor Create(const CaseSensitive, AllowDuplicates, ItemOwner: Boolean);
     destructor Destroy; override;
+    procedure Finalise;
 
     property  Count: Integer read FCount;
     procedure Add(const Key: String; const Value: TObject);
@@ -75,10 +77,11 @@ type
     function  GetValue(const Key: String; var Value: TObject): Boolean;
     function  RequireValue(const Key: String): TObject;
     procedure SetValue(const Key: String; const Value: TObject);
+    procedure AddOrSet(const Key: String; const Value: TObject);
     procedure DeleteKey(const Key: String);
     function  RemoveKey(const Key: String; var Value: TObject): Boolean;
     procedure Clear;
-    function  IterateFirst(var Iterator: TkvStringHashListIterator): PkvStringHashListItem;
+    function  IterateFirst(out Iterator: TkvStringHashListIterator): PkvStringHashListItem;
     function  IterateNext(var Iterator: TkvStringHashListIterator): PkvStringHashListItem;
   end;
 
@@ -154,6 +157,12 @@ begin
 end;
 
 destructor TkvStringHashList.Destroy;
+begin
+  Finalise;
+  inherited Destroy;
+end;
+
+procedure TkvStringHashList.Finalise;
 var
   I, J : Integer;
   Slt : PkvStringHashListSlot;
@@ -166,10 +175,10 @@ begin
         for J := Slt^.Count - 1 downto 0 do
           begin
             Itm := @Slt^.List[J];
-            Itm^.Value.Free;
+            FreeAndNil(Itm^.Value);
           end;
       end;
-  inherited Destroy;
+  FList := nil;
 end;
 
 procedure TkvStringHashList.AddToSlot(const SlotIdx: Integer;
@@ -236,7 +245,7 @@ begin
 end;
 
 function TkvStringHashList.LocateItemIndexBySlot(const SlotIdx: Integer; const Key: String;
-         var Item: PkvStringHashListItem): Integer;
+         out Item: PkvStringHashListItem): Integer;
 var
   Slt : PkvStringHashListSlot;
   ICn : Integer;
@@ -263,12 +272,12 @@ begin
 end;
 
 function TkvStringHashList.LocateItemBySlot(const SlotIdx: Integer; const Key: String;
-         var Item: PkvStringHashListItem): Boolean;
+         out Item: PkvStringHashListItem): Boolean;
 begin
   Result := LocateItemIndexBySlot(SlotIdx, Key, Item) >= 0;
 end;
 
-function TkvStringHashList.LocateItem(const Key: String; var Item: PkvStringHashListItem): Boolean;
+function TkvStringHashList.LocateItem(const Key: String; out Item: PkvStringHashListItem): Boolean;
 var
   Hsh : Word32;
   Slt : Integer;
@@ -340,6 +349,34 @@ begin
   if FItemOwner then
     Itm^.Value.Free;
   Itm^.Value := Value;
+end;
+
+procedure TkvStringHashList.AddOrSet(const Key: String; const Value: TObject);
+var
+  Hsh : Word32;
+  Slt : Integer;
+  Itm : PkvStringHashListItem;
+  ItmIdx : Integer;
+begin
+  Hsh := kvhlHashString(Key, FCaseSensitive);
+  Slt := Hsh mod Word32(FSlots);
+  ItmIdx := LocateItemIndexBySlot(Slt, Key, Itm);
+  if ItmIdx < 0 then
+    begin
+      if FCount = FSlots * kvStringHashList_TargetItemsPerSlot then
+        begin
+          ExpandSlots(FSlots * kvStringHashList_SlotExpandFactor);
+          Slt := Hsh mod Word32(FSlots);
+        end;
+      AddToSlot(Slt, Key, Value);
+      Inc(FCount);
+    end
+  else
+    begin
+      if FItemOwner then
+        Itm^.Value.Free;
+      Itm^.Value := Value;
+    end;
 end;
 
 procedure TkvStringHashList.DeleteKey(const Key: String);
@@ -440,7 +477,7 @@ begin
   Result := @Slt^.List[Iterator.ItemIdx];
 end;
 
-function TkvStringHashList.IterateFirst(var Iterator: TkvStringHashListIterator): PkvStringHashListItem;
+function TkvStringHashList.IterateFirst(out Iterator: TkvStringHashListIterator): PkvStringHashListItem;
 begin
   Iterator.SlotIdx := 0;
   Iterator.ItemIdx := 0;
