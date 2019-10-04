@@ -109,9 +109,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: Int64); overload;
+    class function CreateInstance: AkvValue; override;
     property  Value: Int64 read FValue write FValue;
     function  Duplicate: AkvValue; override;
     procedure Negate; override;
@@ -136,9 +136,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: String); overload;
+    class function CreateInstance: AkvValue; override;
     property  Value: String read FValue write FValue;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
@@ -159,9 +159,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: Double); overload;
+    class function CreateInstance: AkvValue; override;
     property  Value: Double read FValue write FValue;
     function  Duplicate: AkvValue; override;
     procedure Negate; override;
@@ -181,9 +181,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: Boolean); overload;
+    class function CreateInstance: AkvValue; override;
     property  Value: Boolean read FValue write FValue;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
@@ -202,9 +202,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: TDateTime); overload;
+    class function CreateInstance: AkvValue; override;
     property  Value: TDateTime read FValue write FValue;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
@@ -224,10 +224,10 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: kvByteArray); overload;
     constructor Create(const Value: Byte); overload;
+    class function CreateInstance: AkvValue; override;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
@@ -249,9 +249,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: SDecimal128); overload;
+    class function CreateInstance: AkvValue; override;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
     function  PutSerialBuf(const Buf; const BufSize: Integer): Integer; override;
@@ -309,8 +309,8 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create;
+    class function CreateInstance: AkvValue; override;
     destructor Destroy; override;
     procedure Clear;
     function  Duplicate: AkvValue; override;
@@ -380,9 +380,9 @@ type
     function  GetTypeId: Byte; override;
     function  GetSerialSize: Integer; override;
   public
-    class function CreateInstance: AkvValue; override;
     constructor Create; overload;
     constructor Create(const Value: TkvStringHashList); overload;
+    class function CreateInstance: AkvValue; override;
     destructor Destroy; override;
     function  Duplicate: AkvValue; override;
     function  GetSerialBuf(var Buf; const BufSize: Integer): Integer; override;
@@ -1485,7 +1485,7 @@ end;
 
 function TkvNullValue.Duplicate: AkvValue;
 begin
-  Result := TkvNullValue.Create;
+  Result := CreateInstance;
 end;
 
 function TkvNullValue.GetAsString: String;
