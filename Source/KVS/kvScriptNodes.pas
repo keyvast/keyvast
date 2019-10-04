@@ -19,7 +19,8 @@ interface
 uses
   SysUtils,
   kvHashList,
-  kvObjects,
+  kvAbstractSystem,
+  kvDiskSystem,
   kvValues,
   kvScriptContext,
   kvScriptFunctions;
@@ -3548,34 +3549,38 @@ end;
 type
   TkvDatasetIteratorValue = class(TkvBooleanValue)
   private
-    FIterator : TkvDatasetIterator;
+    FIterator : AkvDatasetIterator;
+    FIteratorOwner : Boolean;
   protected
     function  GetAsBoolean: Boolean; override;
   public
-    constructor Create(const Iterator: TkvDatasetIterator);
+    constructor Create(const Iterator: AkvDatasetIterator; const IteratorOwner: Boolean);
     destructor Destroy; override;
     function  Duplicate: AkvValue; override;
   end;
 
-constructor TkvDatasetIteratorValue.Create(const Iterator: TkvDatasetIterator);
+constructor TkvDatasetIteratorValue.Create(const Iterator: AkvDatasetIterator; const IteratorOwner: Boolean);
 begin
   inherited Create;
   FIterator := Iterator;
+  FIteratorOwner := IteratorOwner;
 end;
 
 destructor TkvDatasetIteratorValue.Destroy;
 begin
+  if FIteratorOwner then
+    FreeAndNil(FIterator);
   inherited Destroy;
 end;
 
 function TkvDatasetIteratorValue.GetAsBoolean: Boolean;
 begin
-  Result := FIterator.Dataset.IteratorHasRecord(FIterator);
+  Result := Assigned(FIterator) and FIterator.GetDataset.IteratorHasRecord(FIterator);
 end;
 
 function TkvDatasetIteratorValue.Duplicate: AkvValue;
 begin
-  Result := TkvDatasetIteratorValue.Create(FIterator);
+  Result := TkvDatasetIteratorValue.Create(FIterator, False);
 end;
 
 
@@ -3620,7 +3625,7 @@ function TkvScriptIterateStatement.Execute(const Context: TkvScriptContext): Akv
 var
   DbN : String;
   DsN : String;
-  Iterator : TkvDatasetIterator;
+  Iterator : AkvDatasetIterator;
   ItVal : TkvDatasetIteratorValue;
 begin
   DbN := kvResolveVariableKey(Context, FDatabaseName);
@@ -3629,7 +3634,7 @@ begin
     Context.Session.IterateRecords(DbN, DsN, FKeyPath, Iterator)
   else
     Context.Session.IterateFolders(DbN, DsN, FKeyPath, Iterator);
-  ItVal := TkvDatasetIteratorValue.Create(Iterator);
+  ItVal := TkvDatasetIteratorValue.Create(Iterator, True);
   Context.Scope.SetIdentifier(FIdentifier, ItVal);
   Result := nil;
 end;

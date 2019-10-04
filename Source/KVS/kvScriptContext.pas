@@ -15,7 +15,7 @@ uses
   SysUtils,
   kvHashList,
   kvValues,
-  kvObjects;
+  kvAbstractSystem;
 
 
 
@@ -41,16 +41,14 @@ type
 
     function  AllocateSystemUniqueId: UInt64; virtual; abstract;
 
-    function  CreateDatabase(const Name: String): TkvDatabase; virtual; abstract;
+    function  CreateDatabase(const Name: String): AkvDatabase; virtual; abstract;
     procedure DropDatabase(const Name: String); virtual; abstract;
     function  ListOfDatabases: TkvDictionaryValue; virtual; abstract;
 
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; virtual; abstract;
 
     function  CreateDataset(const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean;
-              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset; virtual; abstract;
+              const UseFolders: Boolean): AkvDataset; virtual; abstract;
     procedure DropDataset(const DatabaseName, DatasetName: String); virtual; abstract;
     function  ListOfDatasets(const DatabaseName: String): TkvDictionaryValue; virtual; abstract;
 
@@ -77,14 +75,14 @@ type
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
+              out Iterator: AkvDatasetIterator): Boolean; virtual; abstract;
     function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
-    function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; virtual; abstract;
-    function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; virtual; abstract;
-    function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue; virtual; abstract;
-    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64; virtual; abstract;
+              out Iterator: AkvDatasetIterator): Boolean; virtual; abstract;
+    function  IterateNextRecord(var Iterator: AkvDatasetIterator): Boolean; virtual; abstract;
+    function  IteratorGetKey(const Iterator: AkvDatasetIterator): String; virtual; abstract;
+    function  IteratorGetValue(const Iterator: AkvDatasetIterator): AkvValue; virtual; abstract;
+    function  IteratorGetTimestamp(const Iterator: AkvDatasetIterator): Int64; virtual; abstract;
 
     function  ExecScript(const S: String): AkvValue; virtual; abstract;
 

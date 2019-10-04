@@ -8,6 +8,7 @@
 { 2018/03/12  0.04  Improve locking }
 { 2019/04/19  0.05  CreateDataset record size parameters }
 { 2019/05/20  0.06  Move SysInfoDataset from TkvSystem to TkvScriptSystem }
+{ 2019/10/03  0.07  Use BaseSystem instead of DiskSystem }
 
 {$INCLUDE kvInclude.inc}
 
@@ -18,9 +19,11 @@ interface
 uses
   SysUtils,
   SyncObjs,
+
   kvHashList,
   kvValues,
-  kvObjects,
+  kvAbstractSystem,
+  kvBaseSystem,
   kvScriptContext,
   kvScriptNodes,
   kvScriptParser;
@@ -30,12 +33,14 @@ uses
 type
   { TkvScriptSession }
 
-  EkvSession = class(EkvObject);
+  EkvSession = class(Exception);
 
   TkvScriptSession = class;
   TkvScriptDatabase = class;
   TkvScriptSystemScope = class;
   TkvScriptSystem = class;
+
+
 
   TkvScriptSessionScope = class(AkvScriptScope)
   private
@@ -52,6 +57,8 @@ type
     procedure SetIdentifier(const Identifier: String; const Value: TObject); override;
   end;
 
+
+
   TkvScriptSession = class(AkvScriptSession)
   private
     FSystem : TkvScriptSystem;
@@ -60,9 +67,9 @@ type
     FContext                : TkvScriptContext;
     FSelectedDatabaseName   : String;
     FSelectedDatasetName    : String;
-    FSelectedDatabase       : TkvDatabase;
+    FSelectedDatabase       : AkvDatabase;
     FSelectedScriptDatabase : TkvScriptDatabase;
-    FSelectedDataset        : TkvDataset;
+    FSelectedDataset        : AkvDataset;
     FScriptParser           : TkvScriptParser;
 
     function  UsedDatabaseName(const DatabaseName: String): String;
@@ -83,16 +90,14 @@ type
 
     function  AllocateSystemUniqueId: UInt64; override;
 
-    function  CreateDatabase(const Name: String): TkvDatabase; override;
+    function  CreateDatabase(const Name: String): AkvDatabase; override;
     procedure DropDatabase(const Name: String); override;
     function  ListOfDatabases: TkvDictionaryValue; override;
 
     function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64; override;
 
     function  CreateDataset(const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean;
-              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset; override;
+              const UseFolders: Boolean): AkvDataset; override;
     procedure DropDataset(const DatabaseName, DatasetName: String); override;
     function  ListOfDatasets(const DatabaseName: String): TkvDictionaryValue; override;
 
@@ -119,20 +124,22 @@ type
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean; override;
+              out Iterator: AkvDatasetIterator): Boolean; override;
     function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean; override;
-    function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean; override;
-    function  IteratorGetKey(const Iterator: TkvDatasetIterator): String; override;
-    function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue; override;
-    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64; override;
+              out Iterator: AkvDatasetIterator): Boolean; override;
+    function  IterateNextRecord(var Iterator: AkvDatasetIterator): Boolean; override;
+    function  IteratorGetKey(const Iterator: AkvDatasetIterator): String; override;
+    function  IteratorGetValue(const Iterator: AkvDatasetIterator): AkvValue; override;
+    function  IteratorGetTimestamp(const Iterator: AkvDatasetIterator): Int64; override;
 
     function  ExecScript(const S: String): AkvValue; override;
 
     procedure CreateStoredProcedure(const DatabaseName, ProcedureName, Script: String); override;
     procedure DropStoredProcedure(const DatabaseName, ProcedureName: String); override;
   end;
+
+
 
   { TkvScriptStoredProcedure }
 
@@ -145,6 +152,7 @@ type
     constructor Create(const Script: String);
     destructor Destroy; override;
   end;
+
 
 
   { TkvScriptDatabase }
@@ -190,14 +198,14 @@ type
 
   TkvScriptSystem = class
   private
-    FSystem : TkvSystem;
+    FSystem : AkvBaseSystem;
 
     FScope          : TkvScriptSystemScope;
     FSessionLock    : TCriticalSection;
     FSessionList    : array of TkvScriptSession;
     FExecLock       : TCriticalSection;
     FDatabaseList   : TkvStringHashList;
-    FSysInfoDataset : TkvDataset;
+    FSysInfoDataset : AkvBaseDataset;
 
     procedure SessionLock;
     procedure SessionUnlock;
@@ -222,7 +230,7 @@ type
 
     function  AllocateSystemUniqueId(const Session: TkvScriptSession): UInt64;
 
-    function  CreateDatabase(const Session: TkvScriptSession; const Name: String): TkvDatabase;
+    function  CreateDatabase(const Session: TkvScriptSession; const Name: String): AkvDatabase;
     procedure DropDatabase(const Session: TkvScriptSession; const Name: String);
     function  ListOfDatabases(const Session: TkvScriptSession): TkvDictionaryValue;
 
@@ -231,9 +239,7 @@ type
 
     function  CreateDataset(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean;
-              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset;
+              const UseFolders: Boolean): AkvDataset;
     procedure DropDataset(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String);
     function  ListOfDatasets(const Session: TkvScriptSession;
@@ -244,35 +250,35 @@ type
 
     procedure UseDatabase(const Session: TkvScriptSession;
               const Name: String;
-              out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase);
+              out Database: AkvDatabase; out ScriptDatabase: TkvScriptDatabase);
     procedure UseDataset(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
-              out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase;
-              out Dataset: TkvDataset);
+              out Database: AkvDatabase; out ScriptDatabase: TkvScriptDatabase;
+              out Dataset: AkvDataset);
     procedure UseNone(const Session: TkvScriptSession);
 
     procedure AddRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
     procedure AddRecord(const Session: TkvScriptSession;
-              const Dataset: TkvDataset;
+              const Dataset: AkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     procedure MakePath(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, KeyPath: String); overload;
     procedure MakePath(const Session: TkvScriptSession;
-              const Dataset: TkvDataset;
+              const Dataset: AkvDataset;
               const KeyPath: String); overload;
 
     function  RecordExists(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String): Boolean; overload;
-    function  RecordExists(const Session: TkvScriptSession; const Dataset: TkvDataset;
+    function  RecordExists(const Session: TkvScriptSession; const Dataset: AkvDataset;
               const Key: String): Boolean; overload;
 
     function  GetRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String): AkvValue; overload;
     function  GetRecord(const Session: TkvScriptSession;
-              const Dataset: TkvDataset;
+              const Dataset: AkvDataset;
               const Key: String): AkvValue; overload;
 
     function  ListOfKeys(const Session: TkvScriptSession;
@@ -282,39 +288,39 @@ type
     procedure DeleteRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String); overload;
     procedure DeleteRecord(const Session: TkvScriptSession;
-              const Dataset: TkvDataset;
+              const Dataset: AkvDataset;
               const Key: String); overload;
 
     procedure SetRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
     procedure SetRecord(const Session: TkvScriptSession;
-              const Dataset: TkvDataset;
+              const Dataset: AkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     procedure AppendRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); overload;
     procedure AppendRecord(const Session: TkvScriptSession;
-              const Dataset: TkvDataset;
+              const Dataset: AkvDataset;
               const Key: String; const Value: AkvValue); overload;
 
     function  IterateRecords(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean;
+              out Iterator: AkvDatasetIterator): Boolean;
     function  IterateFolders(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean;
+              out Iterator: AkvDatasetIterator): Boolean;
     function  IterateNextRecord(const Session: TkvScriptSession;
-              var Iterator: TkvDatasetIterator): Boolean;
+              var Iterator: AkvDatasetIterator): Boolean;
     function  IteratorGetKey(const Session: TkvScriptSession;
-              const Iterator: TkvDatasetIterator): String;
+              const Iterator: AkvDatasetIterator): String;
     function  IteratorGetValue(const Session: TkvScriptSession;
-              const Iterator: TkvDatasetIterator): AkvValue;
+              const Iterator: AkvDatasetIterator): AkvValue;
     function  IteratorGetTimestamp(const Session: TkvScriptSession;
-              const Iterator: TkvDatasetIterator): Int64;
+              const Iterator: AkvDatasetIterator): Int64;
 
     procedure CreateStoredProcedure(const Session: TkvScriptSession;
               const DatabaseName, ProcedureName, Script: String);
@@ -322,7 +328,7 @@ type
               const DatabaseName, ProcedureName: String);
 
   public
-    constructor Create(const System: TkvSystem);
+    constructor Create(const System: AkvBaseSystem);
     destructor Destroy; override;
 
     procedure Open;
@@ -423,7 +429,7 @@ begin
   Result := FSystem.AllocateSystemUniqueId(self);
 end;
 
-function TkvScriptSession.CreateDatabase(const Name: String): TkvDatabase;
+function TkvScriptSession.CreateDatabase(const Name: String): AkvDatabase;
 begin
   Result := FSystem.CreateDatabase(self, Name);
 end;
@@ -444,12 +450,10 @@ begin
 end;
 
 function TkvScriptSession.CreateDataset(const DatabaseName, DatasetName: String;
-         const UseFolders: Boolean;
-         const KeyBlobRecordSize: Word32;
-         const ValBlobRecordSize: Word32): TkvDataset;
+         const UseFolders: Boolean): AkvDataset;
 begin
   Result := FSystem.CreateDataset(self, UsedDatabaseName(DatabaseName), DatasetName,
-      UseFolders, KeyBlobRecordSize, ValBlobRecordSize);
+      UseFolders);
 end;
 
 procedure TkvScriptSession.DropDataset(const DatabaseName, DatasetName: String);
@@ -610,33 +614,33 @@ begin
 end;
 
 function TkvScriptSession.IterateRecords(const DatabaseName, DatasetName: String;
-         const Path: String; out Iterator: TkvDatasetIterator): Boolean;
+         const Path: String; out Iterator: AkvDatasetIterator): Boolean;
 begin
   Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path, Iterator);
 end;
 
 function TkvScriptSession.IterateFolders(const DatabaseName, DatasetName: String;
-         const Path: String; out Iterator: TkvDatasetIterator): Boolean;
+         const Path: String; out Iterator: AkvDatasetIterator): Boolean;
 begin
   Result := FSystem.IterateFolders(self, DatabaseName, DatasetName, Path, Iterator);
 end;
 
-function TkvScriptSession.IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
+function TkvScriptSession.IterateNextRecord(var Iterator: AkvDatasetIterator): Boolean;
 begin
   Result := FSystem.IterateNextRecord(self, Iterator);
 end;
 
-function TkvScriptSession.IteratorGetKey(const Iterator: TkvDatasetIterator): String;
+function TkvScriptSession.IteratorGetKey(const Iterator: AkvDatasetIterator): String;
 begin
   Result := FSystem.IteratorGetKey(self, Iterator);
 end;
 
-function TkvScriptSession.IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
+function TkvScriptSession.IteratorGetValue(const Iterator: AkvDatasetIterator): AkvValue;
 begin
   Result := FSystem.IteratorGetValue(self, Iterator);
 end;
 
-function TkvScriptSession.IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
+function TkvScriptSession.IteratorGetTimestamp(const Iterator: AkvDatasetIterator): Int64;
 begin
   Result := FSystem.IteratorGetTimestamp(self, Iterator);
 end;
@@ -854,7 +858,7 @@ end;
 
 { TkvScriptSessionSystem }
 
-constructor TkvScriptSystem.Create(const System: TkvSystem);
+constructor TkvScriptSystem.Create(const System: AkvBaseSystem);
 begin
   Assert(Assigned(System));
   inherited Create;
@@ -900,28 +904,24 @@ end;
 
 procedure TkvScriptSystem.Open;
 begin
-  FSystem.Open;
-  FSysInfoDataset := FSystem.RequireDatasetByName('_sys', 'info');
+  FSysInfoDataset := FSystem.RequireDatasetByName('_sys', 'info') as AkvBaseDataset;
   LoadSysInfo;
 end;
 
 procedure TkvScriptSystem.OpenNew;
 begin
-  FSystem.OpenNew;
   FSystem.CreateDatabase('_sys');
-  FSysInfoDataset := FSystem.CreateDataset('_sys', 'info', False);
+  FSysInfoDataset := FSystem.CreateDataset('_sys', 'info', False) as AkvBaseDataset;
 end;
 
 procedure TkvScriptSystem.Close;
 begin
   FSysInfoDataset := nil;
-  FSystem.Close;
   FDatabaseList.Clear;
 end;
 
 procedure TkvScriptSystem.Delete;
 begin
-  FSystem.Delete;
 end;
 
 function TkvScriptSystem.GetSessionCount: Integer;
@@ -1004,7 +1004,7 @@ begin
   try
     I := GetSessionIndex(Session);
     if I < 0 then
-      raise EkvObject.Create('Session not found');
+      raise EkvSession.Create('Session not found');
     RemoveSessionByIndex(I);
   finally
     SessionUnlock;
@@ -1044,8 +1044,8 @@ end;
 
 procedure TkvScriptSystem.LoadSysInfo;
 var
-  SI : TkvDataset;
-  It : TkvDatasetIterator;
+  SI : AkvDataset;
+  It : AkvDatasetIterator;
   Key : String;
   KeyP : TArray<String>;
   TypeS : String;
@@ -1057,29 +1057,33 @@ var
 begin
   SI := FSysInfoDataset;
   if SI.IterateRecords('', It) then
-    repeat
-      Key := SI.IteratorGetKey(It);
-      KeyP := Key.Split([':'], 3);
-      if Length(KeyP) >= 2 then
-        begin
-          TypeS := KeyP[0];
-          DbN := KeyP[1];
-          if TypeS = 'sp' then
-            begin
-              if Length(KeyP) >= 3 then
-                begin
-                  Db := GetOrAddScriptDatabase(DbN);
-                  Val := SI.IteratorGetValue(It);
-                  ValS := Val.AsString;
-                  SpN := KeyP[2];
-                  Db.AddStoredProc(SpN, ValS);
-                end;
-            end
-          else
-          if TypeS = 'db' then
-            GetOrAddScriptDatabase(DbN)
-        end;
-    until not SI.IterateNextRecord(It);
+    try
+      repeat
+        Key := SI.IteratorGetKey(It);
+        KeyP := Key.Split([':'], 3);
+        if Length(KeyP) >= 2 then
+          begin
+            TypeS := KeyP[0];
+            DbN := KeyP[1];
+            if TypeS = 'sp' then
+              begin
+                if Length(KeyP) >= 3 then
+                  begin
+                    Db := GetOrAddScriptDatabase(DbN);
+                    Val := SI.IteratorGetValue(It);
+                    ValS := Val.AsString;
+                    SpN := KeyP[2];
+                    Db.AddStoredProc(SpN, ValS);
+                  end;
+              end
+            else
+            if TypeS = 'db' then
+              GetOrAddScriptDatabase(DbN)
+          end;
+      until not SI.IterateNextRecord(It);
+    finally
+      FreeAndNil(It);
+    end;
 end;
 
 procedure TkvScriptSystem.SessionClose(const Session: TkvScriptSession);
@@ -1091,13 +1095,13 @@ function TkvScriptSystem.AllocateSystemUniqueId(const Session: TkvScriptSession)
 begin
   ExecLock;
   try
-    Result := FSystem.AllocateSystemUniqueId;
+    Result := FSystem.AllocateUniqueId;
   finally
     ExecUnlock;
   end;
 end;
 
-function TkvScriptSystem.CreateDatabase(const Session: TkvScriptSession; const Name: String): TkvDatabase;
+function TkvScriptSystem.CreateDatabase(const Session: TkvScriptSession; const Name: String): AkvDatabase;
 begin
   ExecLock;
   try
@@ -1143,7 +1147,7 @@ var
   L, I : Integer;
   R, D : TkvDictionaryValue;
   ItR : Boolean;
-  It : TkvDatabaseListIterator;
+  It : AkvDatabaseListIterator;
 begin
   ExecLock;
   try
@@ -1151,16 +1155,20 @@ begin
     R := TkvDictionaryValue.Create;
     I := 0;
     ItR := FSystem.IterateFirstDatabase(It);
-    while ItR and (I < L) do
-      begin
-        if It.Key <> '_sys' then
-          begin
-            D := TkvDictionaryValue.Create;
-            R.Add(It.Key, D);
-          end;
-        ItR := FSystem.IterateNextDatabase(It);
-        Inc(I);
-      end;
+    try
+      while ItR and (I < L) do
+        begin
+          if It.GetName <> '_sys' then
+            begin
+              D := TkvDictionaryValue.Create;
+              R.Add(It.GetName, D);
+            end;
+          ItR := FSystem.IterateNextDatabase(It);
+          Inc(I);
+        end;
+    finally
+      FreeAndNil(It);
+    end;
   finally
     ExecUnlock;
   end;
@@ -1180,14 +1188,11 @@ end;
 
 function TkvScriptSystem.CreateDataset(const Session: TkvScriptSession;
          const DatabaseName, DatasetName: String;
-         const UseFolders: Boolean;
-         const KeyBlobRecordSize: Word32;
-         const ValBlobRecordSize: Word32): TkvDataset;
+         const UseFolders: Boolean): AkvDataset;
 begin
   ExecLock;
   try
-    Result := FSystem.CreateDataset(DatabaseName, DatasetName, UseFolders,
-        KeyBlobRecordSize, ValBlobRecordSize);
+    Result := FSystem.CreateDataset(DatabaseName, DatasetName, UseFolders);
   finally
     ExecUnlock;
   end;
@@ -1207,10 +1212,10 @@ end;
 function TkvScriptSystem.ListOfDatasets(const Session: TkvScriptSession;
          const DatabaseName: String): TkvDictionaryValue;
 var
-  Db : TkvDatabase;
+  Db : AkvDatabase;
   L, I : Integer;
   ItR : Boolean;
-  It : TkvDatasetListIterator;
+  It : AkvDatasetListIterator;
   R, D : TkvDictionaryValue;
 begin
   ExecLock;
@@ -1220,14 +1225,18 @@ begin
     R := TkvDictionaryValue.Create;
     I := 0;
     ItR := FSystem.IterateFirstDataset(DatabaseName, It);
-    while ItR and (I < L) do
-      begin
-        D := TkvDictionaryValue.Create;
-        D.AddBoolean('with_folders', It.Dataset.UseFolders);
-        R.Add(It.Key, D);
-        ItR := FSystem.IterateNextDataset(It);
-        Inc(I);
-      end;
+    try
+      while ItR and (I < L) do
+        begin
+          D := TkvDictionaryValue.Create;
+          D.AddBoolean('with_folders', It.GetDataset.UseFolders);
+          R.Add(It.GetName, D);
+          ItR := FSystem.IterateNextDataset(It);
+          Inc(I);
+        end;
+    finally
+      FreeAndNil(It);
+    end;
   finally
     ExecUnlock;
   end;
@@ -1247,7 +1256,7 @@ end;
 
 procedure TkvScriptSystem.UseDatabase(const Session: TkvScriptSession;
           const Name: String;
-          out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase);
+          out Database: AkvDatabase; out ScriptDatabase: TkvScriptDatabase);
 begin
   ExecLock;
   try
@@ -1263,8 +1272,8 @@ end;
 procedure TkvScriptSystem.UseDataset(
           const Session: TkvScriptSession;
           const DatabaseName, DatasetName: String;
-          out Database: TkvDatabase; out ScriptDatabase: TkvScriptDatabase;
-          out Dataset: TkvDataset);
+          out Database: AkvDatabase; out ScriptDatabase: TkvScriptDatabase;
+          out Dataset: AkvDataset);
 begin
   ExecLock;
   try
@@ -1297,7 +1306,7 @@ begin
 end;
 
 procedure TkvScriptSystem.AddRecord(const Session: TkvScriptSession;
-          const Dataset: TkvDataset; const Key: String; const Value: AkvValue);
+          const Dataset: AkvDataset; const Key: String; const Value: AkvValue);
 begin
   ExecLock;
   try
@@ -1319,7 +1328,7 @@ begin
 end;
 
 procedure TkvScriptSystem.MakePath(const Session: TkvScriptSession;
-          const Dataset: TkvDataset;
+          const Dataset: AkvDataset;
           const KeyPath: String);
 begin
   ExecLock;
@@ -1342,7 +1351,7 @@ begin
 end;
 
 function TkvScriptSystem.RecordExists(const Session: TkvScriptSession;
-         const Dataset: TkvDataset; const Key: String): Boolean;
+         const Dataset: AkvDataset; const Key: String): Boolean;
 begin
   ExecLock;
   try
@@ -1364,7 +1373,7 @@ begin
 end;
 
 function TkvScriptSystem.GetRecord(const Session: TkvScriptSession;
-         const Dataset: TkvDataset; const Key: String): AkvValue;
+         const Dataset: AkvDataset; const Key: String): AkvValue;
 begin
   ExecLock;
   try
@@ -1398,7 +1407,7 @@ begin
 end;
 
 procedure TkvScriptSystem.DeleteRecord(const Session: TkvScriptSession;
-          const Dataset: TkvDataset;
+          const Dataset: AkvDataset;
           const Key: String);
 begin
   ExecLock;
@@ -1421,7 +1430,7 @@ begin
 end;
 
 procedure TkvScriptSystem.SetRecord(const Session: TkvScriptSession;
-          const Dataset: TkvDataset;
+          const Dataset: AkvDataset;
           const Key: String; const Value: AkvValue);
 begin
   ExecLock;
@@ -1445,7 +1454,7 @@ begin
 end;
 
 procedure TkvScriptSystem.AppendRecord(const Session: TkvScriptSession;
-          const Dataset: TkvDataset;
+          const Dataset: AkvDataset;
           const Key: String; const Value: AkvValue);
 begin
   ExecLock;
@@ -1459,7 +1468,7 @@ end;
 function TkvScriptSystem.IterateRecords(const Session: TkvScriptSession;
          const DatabaseName, DatasetName: String;
          const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
+         out Iterator: AkvDatasetIterator): Boolean;
 begin
   ExecLock;
   try
@@ -1472,7 +1481,7 @@ end;
 function TkvScriptSystem.IterateFolders(const Session: TkvScriptSession;
          const DatabaseName, DatasetName: String;
          const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
+         out Iterator: AkvDatasetIterator): Boolean;
 begin
   ExecLock;
   try
@@ -1483,7 +1492,7 @@ begin
 end;
 
 function TkvScriptSystem.IterateNextRecord(const Session: TkvScriptSession;
-         var Iterator: TkvDatasetIterator): Boolean;
+         var Iterator: AkvDatasetIterator): Boolean;
 begin
   ExecLock;
   try
@@ -1494,7 +1503,7 @@ begin
 end;
 
 function TkvScriptSystem.IteratorGetKey(const Session: TkvScriptSession;
-         const Iterator: TkvDatasetIterator): String;
+         const Iterator: AkvDatasetIterator): String;
 begin
   ExecLock;
   try
@@ -1505,7 +1514,7 @@ begin
 end;
 
 function TkvScriptSystem.IteratorGetValue(const Session: TkvScriptSession;
-         const Iterator: TkvDatasetIterator): AkvValue;
+         const Iterator: AkvDatasetIterator): AkvValue;
 begin
   ExecLock;
   try
@@ -1516,7 +1525,7 @@ begin
 end;
 
 function TkvScriptSystem.IteratorGetTimestamp(const Session: TkvScriptSession;
-         const Iterator: TkvDatasetIterator): Int64;
+         const Iterator: AkvDatasetIterator): Int64;
 begin
   ExecLock;
   try
