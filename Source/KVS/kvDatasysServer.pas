@@ -15,7 +15,8 @@ uses
   SysUtils,
   SyncObjs,
   kvValues,
-  kvObjects,
+  kvAbstractSystem,
+  kvDiskSystem,
   kvScriptParser,
   kvScriptSystem,
   IdGlobal,
@@ -567,7 +568,7 @@ const
 type
   TkvDatasysServerDatasetIterator = record
     Magic : Word32;
-    Iter  : TkvDatasetIterator;
+    Iter  : AkvDatasetIterator;
   end;
   PkvDatasysServerDatasetIterator = ^TkvDatasysServerDatasetIterator;
 
@@ -600,7 +601,10 @@ begin
   end;
   ResponseDict.AddBoolean('hasvalue', IterR);
   if not IterR then
-    Dispose(Iter)
+    begin
+      FreeAndNil(Iter.Iter);
+      Dispose(Iter);
+    end
   else
     begin
       ResponseDict.AddInteger('handle', Int64(Iter));
@@ -665,6 +669,7 @@ begin
   HandleInt := RequestDict.GetValueAsInteger('handle');
   Iter := Pointer(HandleInt);
   ValidateIterator(Iter);
+  FreeAndNil(Iter.Iter);
   Dispose(Iter);
 end;
 
