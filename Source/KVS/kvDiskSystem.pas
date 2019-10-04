@@ -26,24 +26,30 @@
 { 2019/06/10  0.21  Iterate folders }
 { 2019/09/13  0.22  GetRecord and AddRecord support folder values }
 { 2019/09/13  0.23  FolderExists and DeleteFolderRecords }
+{ 2019/09/30  0.24  Objects inherit from base objects }
+{ 2019/10/03  0.25  Rename to kvDiskSystem }
+{ 2019/10/04  0.26  Dataset sets record Timestamp on change }
 
 {$INCLUDE kvInclude.inc}
 
-unit kvObjects;
+unit kvDiskSystem;
 
 interface
 
 uses
-  SysUtils,
+  System.SysUtils,
+
   kvHashList,
-  kvStructures,
-  kvFiles,
-  kvValues;
+  kvDiskFileStructures,
+  kvDiskFiles,
+  kvValues,
+  kvAbstractSystem,
+  kvBaseSystem;
 
 
 
 type
-  EkvObject = class(Exception);
+  EkvDiskObject = class(Exception);
 
 
 
@@ -67,20 +73,23 @@ type
       ditRecordsRecursive,
       ditFoldersNonRecursive
     );
-  TkvDatasetIterator = record
-    IteratorType : TkvDatasetIteratorType;
-    DatabaseName : String;
-    DatasetName  : String;
-    Path         : String;
-    Dataset      : TkvDataset;
-    StackLen     : Integer;
-    Stack        : array of TkvDatasetIteratorStackEntry;
-    HashRecIdx   : Word64;
-    HashRec      : TkvHashFileRecord;
-  end;
-  PkvDatasetIterator = ^TkvDatasetIterator;
 
-  TkvDataset = class
+  TkvDatasetIterator = class(AkvDatasetIterator)
+  private
+    FIteratorType : TkvDatasetIteratorType;
+    FDatabaseName : String;
+    FDatasetName  : String;
+    FPath         : String;
+    FDataset      : TkvDataset;
+    FStackLen     : Integer;
+    FStack        : array of TkvDatasetIteratorStackEntry;
+    FHashRec      : TkvHashFileRecord;
+
+  public
+    function  GetDataset: AkvDataset; override;
+  end;
+
+  TkvDataset = class(AkvBaseDataset)
   private
     FPath              : String;
     FSystemName        : String;
@@ -97,51 +106,51 @@ type
     FValueFile : TkvBlobFile;
 
     function  HashRecSameKey(const HashRec: TkvHashFileRecord;
-              const Key: String; const KeyHash: UInt64;
+              const AKey: String; const AKeyHash: UInt64;
               out HashCollision: Boolean): Boolean;
     procedure HashRecSetKey(var HashRec: TkvHashFileRecord;
-              const Key: String; const KeyHash: UInt64);
+              const AKey: String; const AKeyHash: UInt64);
 
     procedure HashRecReleaseValue(var HashRec: TkvHashFileRecord);
     procedure HashRecSetValue(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
+              const AValue: AkvValue);
 
     procedure HashRecInitKeyValue(out HashRec: TkvHashFileRecord;
-              const Key: String; const KeyHash: UInt64;
-              const Value: AkvValue;
-              const IsFolder: Boolean; var FolderBaseIdx: Word64);
+              const AKey: String; const AKeyHash: UInt64;
+              const AValue: AkvValue;
+              const AIsFolder: Boolean; var FolderBaseIdx: Word64);
 
     procedure RecursiveHashRecSlotCollisionResolve(
               const HashBaseRecIdx, HashRecIdx: Word64;
               var HashRec: TkvHashFileRecord;
-              const Key: String; const KeyHash: UInt64;
-              const Value: AkvValue;
-              const IsFolder: Boolean; var FolderBaseIdx: Word64;
-              const CollisionLevel: Integer;
-              const TimestampNow: Int64);
+              const AKey: String; const AKeyHash: UInt64;
+              const AValue: AkvValue;
+              const AIsFolder: Boolean; var FolderBaseIdx: Word64;
+              const ACollisionLevel: Integer;
+              const ATimestampNow: Int64);
     procedure HashRecSlotCollisionResolve(
               const HashBaseRecIdx, HashRecIdx: Word64;
               var HashRec: TkvHashFileRecord;
-              const Key: String; const KeyHash: UInt64;
-              const Value: AkvValue;
-              const IsFolder: Boolean; var FolderBaseIdx: Word64;
-              const TimestampNow: Int64);
+              const AKey: String; const AKeyHash: UInt64;
+              const AValue: AkvValue;
+              const AIsFolder: Boolean; var FolderBaseIdx: Word64;
+              const ATimestampNow: Int64);
 
     procedure InternalAddRecord(
-              const KeyBaseIdx: Word64; const Key: String;
-              const Value: AkvValue;
-              const IsFolder: Boolean; out FolderBaseIdx: Word64;
-              const Timestamp: Int64);
+              const KeyBaseIdx: Word64; const AKey: String;
+              const AValue: AkvValue;
+              const AIsFolder: Boolean; out FolderBaseIdx: Word64;
+              const ATimestamp: UInt64);
     procedure InternalAddFolderRecords(
               const KeyBaseIdx: Word64;
-              const Folder: TkvFolderValue;
-              const Timestamp: Int64);
-    procedure InternalAddKeyValue(const Key: String; const Value: AkvValue;
-              const Timestamp: Int64);
+              const AFolder: TkvFolderValue;
+              const ATimestamp: UInt64);
+    procedure InternalAddKeyValue(const AKey: String; const AValue: AkvValue;
+              const ATimestamp: UInt64);
 
-    function  LocateRecordFromBase(const BaseIndex: Word64; const Key: String;
+    function  LocateRecordFromBase(const BaseIndex: Word64; const AKey: String;
               out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
-    function  LocateRecord(const Key: String;
+    function  LocateRecord(const AKey: String;
               out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
 
     function  HashRecToKey(const HashRec: TkvHashFileRecord): String;
@@ -153,47 +162,55 @@ type
     function  GetAllRecords: AkvValue;
 
     procedure HashRecAppendValue_Rewrite(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
+              const AValue: AkvValue);
     procedure HashRecAppendValue_StrOrBin(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
+              const AValue: AkvValue);
     procedure HashRecAppendValue_List(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
+              const AValue: AkvValue);
     procedure HashRecAppendValue_Dictionary(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
+              const AValue: AkvValue);
     procedure HashRecAppendValue(var HashRec: TkvHashFileRecord;
-              const Value: AkvValue);
+              const AValue: AkvValue);
 
     procedure ListOfChildKeys(const BaseIdx: Word32; const D: TkvDictionaryValue;
-              const Recurse: Boolean);
+              const ARecurse: Boolean);
     function  ListOfFolderKeys(const HashRec: TkvHashFileRecord;
-              const Recurse: Boolean): TkvDictionaryValue;
-    function  ListOfRootKeys(const Recurse: Boolean): TkvDictionaryValue;
+              const ARecurse: Boolean): TkvDictionaryValue;
+    function  ListOfRootKeys(const ARecurse: Boolean): TkvDictionaryValue;
 
     procedure InternalDeleteChildren(const BaseIndex: Word64);
     procedure InternalDeleteRecord(const HashRecIdx: Word64;
               var HashRec: TkvHashFileRecord);
 
-    function  SetNextIteratorRecord(var Iterator: TkvDatasetIterator): Boolean;
-    function  IterateFirst(const IteratorType: TkvDatasetIteratorType;
-              const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean;
+    function  SetNextIteratorRecord(var AIterator: TkvDatasetIterator): Boolean;
+    function  IterateFirst(const AIteratorType: TkvDatasetIteratorType;
+              const APath: String;
+              out AIterator: AkvDatasetIterator): Boolean;
+
+  protected
+    function  GetName: String; override;
+    function  GetUseFolders: Boolean; override;
 
   public
     constructor Create(
-                const Path, SystemName, DatabaseName: String;
-                const DatasetListIdx: Word32;
-                const DatasetListRec: TkvDatasetListFileRecord); overload;
+                const APath, ASystemName, ADatabaseName: String;
+                const ADatasetListIdx: Word32;
+                const ADatasetListRec: TkvDatasetListFileRecord;
+                const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries
+                ); overload;
     constructor Create(
-                const Path, SystemName, DatabaseName, DatasetName: String;
-                const UseFolders: Boolean;
-                const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-                const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize
+                const APath, ASystemName, ADatabaseName, ADatasetName: String;
+                const AUseFolders: Boolean;
+                const AKeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+                const AValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize;
+                const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries
                 ); overload;
     destructor Destroy; override;
     procedure Finalise;
 
     property  Name: String read FName;
     property  UseFolders: Boolean read FUseFolders;
+
     property  KeyBlobRecordSize: Word32 read FKeyBlobRecordSize;
     property  ValBlobRecordSize: Word32 read FValBlobRecordSize;
 
@@ -202,75 +219,30 @@ type
     procedure Close;
     procedure Delete;
 
-    function  AllocateUniqueId: UInt64;
+    function  AllocateUniqueId: UInt64; override;
 
-    procedure AddRecord(const Key: String; const Value: AkvValue);
-    procedure AddRecordString(const Key: String; const Value: String);
-    procedure AddRecordInteger(const Key: String; const Value: Int64);
-    procedure AddRecordFloat(const Key: String; const Value: Double);
-    procedure AddRecordBoolean(const Key: String; const Value: Boolean);
-    procedure AddRecordDateTime(const Key: String; const Value: TDateTime);
-    procedure AddRecordBinary(const Key: String; const Value: kvByteArray);
-    procedure AddRecordNull(const Key: String);
+    function  RecordExists(const AKey: String): Boolean; override;
+    function  GetRecordIfExists(const AKey: String): AkvValue; override;
+    function  GetRecord(const AKey: String): AkvValue; override;
+    function  FolderExists(const AKey: String): Boolean; override;
+    procedure MakePath(const AKeyPath: String); override;
+    procedure AddRecord(const AKey: String; const AValue: AkvValue); override;
+    procedure SetRecord(const AKey: String; const AValue: AkvValue); override;
+    procedure SetOrAddRecord(const AKey: String; const AValue: AkvValue); override;
+    procedure AppendRecord(const AKey: String; const AValue: AkvValue); override;
+    procedure DeleteRecord(const AKey: String); override;
+    procedure DeleteFolderRecords(const APath: String); override;
 
-    procedure MakePath(const KeyPath: String);
+    function  ListOfKeys(const AKeyPath: String; const ARecurse: Boolean): TkvDictionaryValue; override;
+    function  IterateRecords(const APath: String; out AIterator: AkvDatasetIterator): Boolean; override;
+    function  IterateFolders(const APath: String; out AIterator: AkvDatasetIterator): Boolean; override;
+    function  IterateNextRecord(var AIterator: AkvDatasetIterator): Boolean; override;
+    function  IteratorHasRecord(const AIterator: AkvDatasetIterator): Boolean; override;
+    function  IteratorGetKey(const AIterator: AkvDatasetIterator): String; override;
+    function  IteratorGetValue(const AIterator: AkvDatasetIterator): AkvValue; override;
+    function  IteratorGetTimestamp(const AIterator: AkvDatasetIterator): UInt64; override;
 
-    function  FolderExists(const Key: String): Boolean;
-
-    function  RecordExists(const Key: String): Boolean;
-
-    function  GetRecordIfExists(const Key: String): AkvValue;
-
-    function  GetRecord(const Key: String): AkvValue;
-    function  GetRecordAsString(const Key: String): String;
-    function  GetRecordAsInteger(const Key: String): Int64;
-    function  GetRecordAsFloat(const Key: String): Double;
-    function  GetRecordAsBoolean(const Key: String): Boolean;
-    function  GetRecordAsDateTime(const Key: String): TDateTime;
-    function  GetRecordAsBinary(const Key: String): kvByteArray;
-    function  GetRecordIsNull(const Key: String): Boolean;
-
-    function  GetRecordAsStringDef(const Key: String; const DefaultValue: String = ''): String;
-    function  GetRecordAsIntegerDef(const Key: String; const DefaultValue: Int64 = 0): Int64;
-    function  GetRecordAsFloatDef(const Key: String; const DefaultValue: Double = 0.0): Double;
-    function  GetRecordAsBooleanDef(const Key: String; const DefaultValue: Boolean = False): Boolean;
-    function  GetRecordAsDateTimeDef(const Key: String; const DefaultValue: TDateTime = 0.0): TDateTime;
-
-    function  ListOfKeys(const KeyPath: String; const Recurse: Boolean): TkvDictionaryValue;
-
-    procedure SetRecord(const Key: String; const Value: AkvValue);
-    procedure SetRecordAsString(const Key: String; const Value: String);
-    procedure SetRecordAsInteger(const Key: String; const Value: Int64);
-    procedure SetRecordAsFloat(const Key: String; const Value: Double);
-    procedure SetRecordAsBoolean(const Key: String; const Value: Boolean);
-    procedure SetRecordAsDateTime(const Key: String; const Value: TDateTime);
-    procedure SetRecordAsBinary(const Key: String; const Value: kvByteArray);
-    procedure SetRecordNull(const Key: String);
-
-    procedure SetOrAddRecord(const Key: String; const Value: AkvValue);
-    procedure SetOrAddRecordAsString(const Key: String; const Value: String);
-    procedure SetOrAddRecordAsInteger(const Key: String; const Value: Int64);
-    procedure SetOrAddRecordAsFloat(const Key: String; const Value: Double);
-    procedure SetOrAddRecordAsBoolean(const Key: String; const Value: Boolean);
-    procedure SetOrAddRecordAsDateTime(const Key: String; const Value: TDateTime);
-    procedure SetOrAddRecordAsBinary(const Key: String; const Value: kvByteArray);
-
-    procedure AppendRecord(const Key: String; const Value: AkvValue);
-    procedure AppendRecordString(const Key: String; const Value: String);
-
-    procedure DeleteRecord(const Key: String);
-
-    procedure DeleteFolderRecords(const Path: String);
-
-    function  IterateRecords(const Path: String; out Iterator: TkvDatasetIterator): Boolean;
-    function  IterateFolders(const Path: String; out Iterator: TkvDatasetIterator): Boolean;
-    function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
-    function  IteratorHasRecord(const Iterator: TkvDatasetIterator): Boolean;
-    function  IteratorGetKey(const Iterator: TkvDatasetIterator): String;
-    function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
-    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
-
-    procedure BackupTo(const Dataset: TkvDataset);
+    procedure BackupTo(const ADataset: TkvDataset);
   end;
 
 
@@ -279,12 +251,18 @@ type
 
   TkvDatabase = class;
 
-  TkvDatasetListIterator = record
-    Database : TkvDatabase;
-    Iterator : TkvStringHashListIterator;
-    Item     : PkvStringHashListItem;
-    Key      : String;
-    Dataset  : TkvDataset;
+  TkvDatasetListIterator = class(AkvDatasetListIterator)
+  private
+    FDatabase : TkvDatabase;
+    FIterator : TkvStringHashListIterator;
+    FItem     : PkvStringHashListItem;
+    FKey      : String;
+    FDataset  : TkvDataset;
+
+  public
+    function  GetDatabase: AkvDatabase; override;
+    function  GetName: String; override;
+    function  GetDataset: AkvDataset; override;
   end;
 
   TkvDatasetList = class
@@ -297,42 +275,46 @@ type
     FList : TkvStringHashList;
 
     procedure ListClear;
-    procedure ListAppend(const Item: TkvDataset);
-    function  IterateFirst(var Iterator: TkvDatasetListIterator): Boolean;
-    function  IterateNext(var Iterator: TkvDatasetListIterator): Boolean;
+    procedure ListAppend(const AItem: TkvDataset);
+    function  IterateFirst(var AIterator: AkvDatasetListIterator): Boolean;
+    function  IterateNext(var AIterator: AkvDatasetListIterator): Boolean;
 
   public
-    constructor Create(const Path, SystemName, DatabaseName: String);
+    constructor Create(const APath, ASystemName, ADatabaseName: String);
     destructor Destroy; override;
     procedure Finalise;
 
     procedure OpenNew;
-    procedure Open;
+    procedure Open(const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries);
     procedure Close;
     procedure Delete;
 
     function  GetCount: Integer;
 
-    function  Exists(const Name: String): Boolean;
-    function  Add(const Name: String;
-                  const UseFolders: Boolean;
-                  const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-                  const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize
+    function  Exists(const AName: String): Boolean;
+    function  Add(const AName: String;
+                  const AUseFolders: Boolean;
+                  const AKeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+                  const AValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize;
+                  const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries
                   ): TkvDataset;
 
-    function  RequireItemByName(const Name: String): TkvDataset;
+    function  RequireItemByName(const AName: String): TkvDataset;
 
-    procedure Remove(const Name: String);
+    procedure Remove(const AName: String);
 
-    procedure SaveDataset(const Dataset: TkvDataset);
+    procedure SaveDataset(const ADataset: TkvDataset);
   end;
 
 
 
+  TkvSystem = class;
+
   { TkvDatabase }
 
-  TkvDatabase = class
+  TkvDatabase = class(AkvBaseDatabase)
   private
+    FSystem          : TkvSystem;
     FPath            : String;
     FDatabaseListIdx : Word32;
     FDatabaseListRec : TkvDatabaseListFileRecord;
@@ -340,52 +322,65 @@ type
     FName        : String;
     FDatasetList : TkvDatasetList;
 
-    function  AllocateUniqueId: UInt64;
+  protected
+    function  GetName: String; override;
 
   public
     constructor Create(
-                const Path, SystemName: String;
-                const DatabaseListIdx: Word32;
-                const DatabaseListRec: TkvDatabaseListFileRecord);
+                const ASystem: TkvSystem;
+                const APath, ASystemName: String;
+                const ADatabaseListIdx: Word32;
+                const ADatabaseListRec: TkvDatabaseListFileRecord);
     destructor Destroy; override;
     procedure Finalise;
 
     property  Name: String read FName;
 
+    function  AllocateUniqueId: UInt64; override;
+
     procedure OpenNew;
-    procedure Open;
+    procedure Open(const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries);
     procedure Close;
     procedure Delete;
 
     property  DatasetList: TkvDatasetList read FDatasetList;
 
-    function  GetDatasetCount: Integer;
-    function  IterateFirstDataset(var Iterator: TkvDatasetListIterator): Boolean;
-    function  IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
+    function  GetDatasetCount: Integer; override;
+    function  IterateFirstDataset(var AIterator: AkvDatasetListIterator): Boolean; override;
+    function  IterateNextDataset(var AIterator: AkvDatasetListIterator): Boolean; override;
 
-    function  RequireDatasetByName(const Name: String): TkvDataset;
-    function  DatasetExists(const Name: String): Boolean;
-    function  AddDataset(const Name: String;
-              const UseFolders: Boolean;
-              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize
+    function  RequireDatasetByName(const AName: String): AkvDataset; override;
+    function  DatasetExists(const AName: String): Boolean; override;
+    function  AddDiskDataset(
+              const AName: String;
+              const AUseFolders: Boolean;
+              const AKeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+              const AValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize;
+              const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries
               ): TkvDataset;
-    procedure RemoveDataset(const Name: String);
+    function  AddDataset(const AName: String; const AUseFolders: Boolean): AkvDataset; override;
+    procedure RemoveDataset(const AName: String); override;
   end;
 
 
 
   { TkvDatabaseList }
 
-  TkvDatabaseListIterator = record
-    Iterator : TkvStringHashListIterator;
-    Item     : PkvStringHashListItem;
-    Key      : String;
-    Database : TkvDatabase;
+  TkvDatabaseListIterator = class(AkvDatabaseListIterator)
+  private
+    FIterator : TkvStringHashListIterator;
+    FItem     : PkvStringHashListItem;
+    FKey      : String;
+    FDatabase : TkvDatabase;
+
+  public
+    function  GetName: String; override;
+    function  GetDatabase: AkvDatabase; override;
   end;
 
   TkvDatabaseList = class
   private
+    FSystem     : TkvSystem;
     FPath       : String;
     FSystemName : String;
 
@@ -393,10 +388,10 @@ type
     FList : TkvStringHashList;
 
     procedure ListClear;
-    procedure ListAppend(const Item: TkvDatabase);
+    procedure ListAppend(const AItem: TkvDatabase);
 
   public
-    constructor Create(const Path, SystemName: String);
+    constructor Create(const ASystem: TkvSystem; const APath, ASystemName: String);
     destructor Destroy; override;
     procedure Finalise;
 
@@ -406,25 +401,25 @@ type
     procedure Delete;
 
     function  GetCount: Integer;
-    function  IterateFirst(var Iterator: TkvDatabaseListIterator): Boolean;
-    function  IterateNext(var Iterator: TkvDatabaseListIterator): Boolean;
+    function  IterateFirst(var AIterator: AkvDatabaseListIterator): Boolean;
+    function  IterateNext(var AIterator: AkvDatabaseListIterator): Boolean;
 
-    function  DatabaseExists(const Name: String): Boolean;
-    function  AddDatabase(const Name: String): TkvDatabase;
+    function  DatabaseExists(const AName: String): Boolean;
+    function  AddDatabase(const AName: String): TkvDatabase;
 
-    function  GetDatabaseByName(const Name: String): TkvDatabase;
-    function  RequireDatabaseByName(const Name: String): TkvDatabase;
+    function  GetDatabaseByName(const AName: String): TkvDatabase;
+    function  RequireDatabaseByName(const AName: String): TkvDatabase;
 
-    procedure SaveDatabase(const Database: TkvDatabase);
+    procedure SaveDatabase(const ADatabase: TkvDatabase);
 
-    procedure Remove(const Name: String);
+    procedure Remove(const AName: String);
   end;
 
 
 
   { TkvSystem }
 
-  TkvSystem = class
+  TkvSystem = class(AkvBaseSystem)
   private
     FPath : String;
     FName : String;
@@ -436,87 +431,41 @@ type
     procedure VerifyNotOpen;
     procedure VerifyOpen;
 
-    function  GetUserDataStr: String;
-    procedure SetUserDataStr(const A: String);
+  protected
+    function  GetUserDataStr: String; override;
+    procedure SetUserDataStr(const AUserDataStr: String); override;
 
   public
-    constructor Create(const Path, Name: String);
+    constructor Create(const APath, AName: String);
     destructor Destroy; override;
     procedure Finalise;
 
     function  Exists: Boolean;
-    procedure OpenNew(const UserDataStr: String = '');
+    procedure OpenNew(const AUserDataStr: String = '');
     procedure Open;
     procedure Close;
     procedure Delete;
 
     property  UserDataStr: String read GetUserDataStr write SetUserDataStr;
-    function  AllocateSystemUniqueId: UInt64;
 
-    function  GetDatabaseCount: Integer;
-    function  IterateFirstDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
-    function  IterateNextDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
-    function  DatabaseExists(const Name: String): Boolean;
-    function  CreateDatabase(const Name: String): TkvDatabase;
-    function  RequireDatabaseByName(const Name: String): TkvDatabase;
-    procedure DropDatabase(const Name: String);
+    function  AllocateUniqueId: UInt64; override;
 
-    function  AllocateDatabaseUniqueId(const DatabaseName: String): UInt64;
+    function  DatabaseExists(const AName: String): Boolean; override;
+    function  CreateDatabase(const AName: String): AkvDatabase; override;
+    function  RequireDatabaseByName(const AName: String): AkvDatabase; override;
+    procedure DropDatabase(const AName: String); override;
+    function  GetDatabaseCount: Integer; override;
+    function  IterateFirstDatabase(var AIterator: AkvDatabaseListIterator): Boolean; override;
+    function  IterateNextDatabase(var AIterator: AkvDatabaseListIterator): Boolean; override;
 
-    function  DatasetExists(const DatabaseName, DatasetName: String): Boolean;
-    function  IterateFirstDataset(const DatabaseName: String;
-              var Iterator: TkvDatasetListIterator): Boolean;
-    function  IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
-    function  CreateDataset(const DatabaseName, DatasetName: String;
-              const UseFolders: Boolean;
-              const KeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
-              const ValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize): TkvDataset;
-    function  RequireDatasetByName(const DatabaseName, DatasetName: String): TkvDataset;
-    procedure DropDataset(const DatabaseName, DatasetName: String);
-    function  AllocateDatasetUniqueId(const DatabaseName, DatasetName: String): UInt64;
+    function  CreateDiskDataset(
+              const ADatabaseName, ADatasetName: String;
+              const AUseFolders: Boolean;
+              const AKeyBlobRecordSize: Word32 = KV_Dataset_KeyBlob_DefaultRecordSize;
+              const AValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize;
+              const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries): TkvDataset;
 
-    procedure AddRecord(const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue); overload;
-    procedure AddRecord(const Dataset: TkvDataset; const Key: String;
-              const Value: AkvValue); overload;
-
-    procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); overload;
-    procedure MakePath(const Dataset: TkvDataset; const KeyPath: String); overload;
-
-    function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; overload;
-    function  RecordExists(const Dataset: TkvDataset; const Key: String): Boolean; overload;
-
-    function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; overload;
-    function  GetRecord(const Dataset: TkvDataset; const Key: String): AkvValue; overload;
-
-    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-              const Recurse: Boolean): AkvValue;
-
-    procedure SetRecord(const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue); overload;
-    procedure SetRecord(const Dataset: TkvDataset; const Key: String;
-              const Value: AkvValue); overload;
-
-    procedure AppendRecord(const DatabaseName, DatasetName, Key: String;
-              const Value: AkvValue); overload;
-    procedure AppendRecord(const Dataset: TkvDataset; const Key: String;
-              const Value: AkvValue); overload;
-
-    procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); overload;
-    procedure DeleteRecord(const Dataset: TkvDataset; const Key: String); overload;
-
-    function  IterateRecords(const DatabaseName, DatasetName: String;
-              const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean;
-    function  IterateFolders(const DatabaseName, DatasetName: String;
-              const Path: String;
-              out Iterator: TkvDatasetIterator): Boolean;
-    function  IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
-    function  IteratorGetKey(const Iterator: TkvDatasetIterator): String;
-    function  IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
-    function  IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
-
-    function  Backup(const BackupPath: String): TkvSystem;
+    function  Backup(const ABackupPath: String): TkvSystem;
   end;
 
 
@@ -524,7 +473,7 @@ type
 implementation
 
 uses
-  kvHash;
+  kvDiskHash;
 
 
 
@@ -539,85 +488,99 @@ end;
 
 
 
+{ TkvDatasetIterator }
+
+function TkvDatasetIterator.GetDataset: AkvDataset;
+begin
+  Result := FDataset;
+end;
+
+
+
 { TkvDataset }
 
 constructor TkvDataset.Create(
-            const Path, SystemName, DatabaseName: String;
-            const DatasetListIdx: Word32;
-            const DatasetListRec: TkvDatasetListFileRecord);
+            const APath, ASystemName, ADatabaseName: String;
+            const ADatasetListIdx: Word32;
+            const ADatasetListRec: TkvDatasetListFileRecord;
+            const AHashFileCacheEntries: Word32);
 begin
-  Assert(SystemName <> '');
-  Assert(DatabaseName <> '');
+  Assert(ASystemName <> '');
+  Assert(ADatabaseName <> '');
 
   inherited Create;
 
-  FPath := Path;
-  FSystemName := SystemName;
-  FDatabaseName := DatabaseName;
-  FDatasetListIdx := DatasetListIdx;
-  FDatasetListRec := DatasetListRec;
+  FPath := APath;
+  FSystemName := ASystemName;
+  FDatabaseName := ADatabaseName;
+  FDatasetListIdx := ADatasetListIdx;
+  FDatasetListRec := ADatasetListRec;
 
   kvNameFromBuf(FName, FDatasetListRec.Name[0], FDatasetListRec.NameLength);
   FUseFolders := FDatasetListRec.UseFolders;
   FKeyBlobRecordSize := FDatasetListRec.KeyBlobRecordSize;
   FValBlobRecordSize := FDatasetListRec.ValBlobRecordSize;
 
-  FHashFile := TkvHashFile.Create(FPath, FSystemName, FDatabaseName, FName);
+  FHashFile := TkvHashFile.Create(FPath, FSystemName, FDatabaseName, FName, AHashFileCacheEntries);
   FKeyFile := TkvBlobFile.Create(FPath, FSystemName, FDatabaseName, FName, 'k');
   FValueFile := TkvBlobFile.Create(FPath, FSystemName, FDatabaseName, FName, 'v');
 end;
 
-constructor TkvDataset.Create(const Path, SystemName, DatabaseName, DatasetName: String;
-            const UseFolders: Boolean;
-            const KeyBlobRecordSize: Word32;
-            const ValBlobRecordSize: Word32);
+constructor TkvDataset.Create(const APath, ASystemName, ADatabaseName, ADatasetName: String;
+            const AUseFolders: Boolean;
+            const AKeyBlobRecordSize: Word32;
+            const AValBlobRecordSize: Word32;
+            const AHashFileCacheEntries: Word32);
 begin
-  Assert(SystemName <> '');
-  Assert(DatabaseName <> '');
-  Assert(DatasetName <> '');
+  Assert(ASystemName <> '');
+  Assert(ADatabaseName <> '');
+  Assert(ADatasetName <> '');
 
   inherited Create;
 
-  FPath := Path;
-  FSystemName := SystemName;
-  FDatabaseName := DatabaseName;
-  FName := DatasetName;
-  FUseFolders := UseFolders;
+  FPath := APath;
+  FSystemName := ASystemName;
+  FDatabaseName := ADatabaseName;
+  FName := ADatasetName;
+  FUseFolders := AUseFolders;
 
-  kvValidateBlobFileRecordSize(KeyBlobRecordSize);
-  FKeyBlobRecordSize := KeyBlobRecordSize;
+  kvValidateBlobFileRecordSize(AKeyBlobRecordSize);
+  FKeyBlobRecordSize := AKeyBlobRecordSize;
 
-  kvValidateBlobFileRecordSize(ValBlobRecordSize);
-  FValBlobRecordSize := ValBlobRecordSize;
+  kvValidateBlobFileRecordSize(AValBlobRecordSize);
+  FValBlobRecordSize := AValBlobRecordSize;
 
-  FHashFile := TkvHashFile.Create(FPath, FSystemName, FDatabaseName, FName);
+  FHashFile := TkvHashFile.Create(FPath, FSystemName, FDatabaseName, FName, AHashFileCacheEntries);
   FKeyFile := TkvBlobFile.Create(FPath, FSystemName, FDatabaseName, FName, 'k');
   FValueFile := TkvBlobFile.Create(FPath, FSystemName, FDatabaseName, FName, 'v');
 end;
 
 destructor TkvDataset.Destroy;
 begin
-  Finalise;
+  FreeAndNil(FValueFile);
+  FreeAndNil(FKeyFile);
+  FreeAndNil(FHashFile);
   inherited Destroy;
 end;
 
 procedure TkvDataset.Finalise;
 begin
   if Assigned(FValueFile) then
-    begin
-      FValueFile.Finalise;
-      FreeAndNil(FValueFile);
-    end;
+    FValueFile.Finalise;
   if Assigned(FKeyFile) then
-    begin
-      FKeyFile.Finalise;
-      FreeAndNil(FKeyFile);
-    end;
+    FKeyFile.Finalise;
   if Assigned(FHashFile) then
-    begin
-      FHashFile.Finalise;
-      FreeAndNil(FHashFile);
-    end;
+    FHashFile.Finalise;
+end;
+
+function TkvDataset.GetName: String;
+begin
+  Result := FName;
+end;
+
+function TkvDataset.GetUseFolders: Boolean;
+begin
+  Result := FUseFolders;
 end;
 
 procedure TkvDataset.OpenNew;
@@ -634,19 +597,19 @@ begin
   FValueFile.Open;
 end;
 
-procedure TkvDataset.BackupTo(const Dataset: TkvDataset);
+procedure TkvDataset.BackupTo(const ADataset: TkvDataset);
 var
   Hdr : PkvHashFileHeader;
   BakHdr : PkvHashFileHeader;
-  DsIt : TkvDatasetIterator;
+  DsIt : AkvDatasetIterator;
   Key : String;
   Timestamp : Int64;
   Val : AkvValue;
 begin
   Hdr := FHashFile.GetHeader;
-  BakHdr := Dataset.FHashFile.GetHeader;
+  BakHdr := ADataset.FHashFile.GetHeader;
   BakHdr^.UniqueIdCounter := Hdr.UniqueIdCounter;
-  Dataset.FHashFile.HeaderModified;
+  ADataset.FHashFile.HeaderModified;
   if IterateRecords('', DsIt) then
     repeat
       Key := IteratorGetKey(DsIt);
@@ -655,7 +618,7 @@ begin
         ////Writeln(Key, '=', Copy(Val.AsString, 1, 20)); ////
         Timestamp := IteratorGetTimestamp(DsIt);
         ////try
-        Dataset.InternalAddKeyValue(Key, Val, Timestamp);
+        ADataset.InternalAddKeyValue(Key, Val, Timestamp);
         ////except
           ////on E : Exception do
             ////Writeln(E.ClassName, ':', E.Message, ':', Key); ////
@@ -664,6 +627,7 @@ begin
         FreeAndNil(Val);
       end;
     until not IterateNextRecord(DsIt);
+  ADataset.FHashFile.UpdateHeader;
 end;
 
 procedure TkvDataset.Close;
@@ -683,12 +647,13 @@ end;
 function TkvDataset.AllocateUniqueId: UInt64;
 begin
   Result := FHashFile.AllocateUniqueId;
+  FHashFile.UpdateHeader;
 end;
 
 // Returns True if HashRec's key matches Key
 // HashCollision is set True if keys are different but have same hash
 function TkvDataset.HashRecSameKey(const HashRec: TkvHashFileRecord;
-         const Key: String; const KeyHash: UInt64;
+         const AKey: String; const AKeyHash: UInt64;
          out HashCollision: Boolean): Boolean;
 var
   KeyLen : Word32;
@@ -696,9 +661,9 @@ var
   N, I : Integer;
 begin
   HashCollision := False;
-  if HashRec.KeyHash = KeyHash then
+  if HashRec.KeyHash = AKeyHash then
     begin
-      KeyLen := Length(Key);
+      KeyLen := Length(AKey);
       Assert(KeyLen <= KV_HashFile_MaxKeyLength);
       if HashRec.KeyLength = KeyLen then
         begin
@@ -707,14 +672,14 @@ begin
           if N > KV_HashFileRecord_SlotShortKeyLength then
             N := KV_HashFileRecord_SlotShortKeyLength;
           for I := 0 to N - 1 do
-            if HashRec.KeyShort[I] <> Key[I + 1] then
+            if HashRec.KeyShort[I] <> AKey[I + 1] then
               begin
                 R := False;
                 break;
               end;
           if R then
             if KeyLen > KV_HashFileRecord_SlotShortKeyLength then
-              if HashRecToKey(HashRec) <> Key then
+              if HashRecToKey(HashRec) <> AKey then
                 R := False;
         end
       else
@@ -729,21 +694,21 @@ end;
 
 // Sets key in HashRec, allocating chain in keyfile if required
 procedure TkvDataSet.HashRecSetKey(var HashRec: TkvHashFileRecord;
-          const Key: String; const KeyHash: UInt64);
+          const AKey: String; const AKeyHash: UInt64);
 var
   KeyLen : Word32;
   N : Integer;
 begin
-  KeyLen := Length(Key);
+  KeyLen := Length(AKey);
   Assert(KeyLen <= KV_HashFile_MaxKeyLength);
-  HashRec.KeyHash := KeyHash;
+  HashRec.KeyHash := AKeyHash;
   HashRec.KeyLength := KeyLen;
   N := KeyLen;
   if N > KV_HashFileRecord_SlotShortKeyLength then
     N := KV_HashFileRecord_SlotShortKeyLength;
-  Move(PChar(Key)^, HashRec.KeyShort[0], N * SizeOf(Char));
+  Move(PChar(AKey)^, HashRec.KeyShort[0], N * SizeOf(Char));
   if KeyLen > KV_HashFileRecord_SlotShortKeyLength then
-    HashRec.KeyLongChainIndex := FKeyFile.CreateChain(PChar(Key)^, KeyLen * SizeOf(Char))
+    HashRec.KeyLongChainIndex := FKeyFile.CreateChain(PChar(AKey)^, KeyLen * SizeOf(Char))
   else
     HashRec.KeyLongChainIndex := KV_BlobFile_InvalidIndex;
 end;
@@ -763,23 +728,23 @@ end;
 
 // Sets value in HashRec, allocating chain in valuefile if required
 procedure TkvDataSet.HashRecSetValue(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
+          const AValue: AkvValue);
 var
   M : Integer;
   ValBuf : Pointer;
 begin
-  M := Value.SerialSize;
+  M := AValue.SerialSize;
   if M <= KV_HashFileRecord_SlotShortValueSize then
     begin
       HashRecReleaseValue(HashRec);
       HashRec.ValueType := hfrvtShort;
-      Value.GetSerialBuf(HashRec.ValueShort[0], KV_HashFileRecord_SlotShortValueSize);
+      AValue.GetSerialBuf(HashRec.ValueShort[0], KV_HashFileRecord_SlotShortValueSize);
     end
   else
     begin
       GetMem(ValBuf, M);
       try
-        Value.GetSerialBuf(ValBuf^, M);
+        AValue.GetSerialBuf(ValBuf^, M);
         if HashRec.ValueType = hfrvtLong then
           begin
             Assert(HashRec.ValueLongChainIndex <> KV_BlobFile_InvalidIndex);
@@ -795,26 +760,26 @@ begin
       end;
     end;
   HashRec.ValueSize := M;
-  HashRec.ValueTypeId := Value.TypeId;
+  HashRec.ValueTypeId := AValue.TypeId;
 end;
 
 // Initialises Key and Value in HashRec, allocating folder slots if Folder
 procedure TkvDataset.HashRecInitKeyValue(out HashRec: TkvHashFileRecord;
-          const Key: String; const KeyHash: UInt64;
-          const Value: AkvValue;
-          const IsFolder: Boolean; var FolderBaseIdx: Word64);
+          const AKey: String; const AKeyHash: UInt64;
+          const AValue: AkvValue;
+          const AIsFolder: Boolean; var FolderBaseIdx: Word64);
 begin
   kvInitHashFileRecord(HashRec);
   HashRec.RecordType := hfrtKeyValue;
-  if IsFolder then
+  if AIsFolder then
     begin
       HashRec.ValueType := hfrvtFolder;
       HashRec.ValueFolderBaseIndex := FHashFile.AllocateSlotRecords;
       FolderBaseIdx := HashRec.ValueFolderBaseIndex;
     end
   else
-    HashRecSetValue(HashRec, Value);
-  HashRecSetKey(HashRec, Key, KeyHash);
+    HashRecSetValue(HashRec, AValue);
+  HashRecSetKey(HashRec, AKey, AKeyHash);
 end;
 
 const
@@ -825,11 +790,11 @@ const
 // When resolved new slot records with separate slot entries for HashRec and Key/Value is populated
 procedure TkvDataset.RecursiveHashRecSlotCollisionResolve(
           const HashBaseRecIdx, HashRecIdx: Word64; var HashRec: TkvHashFileRecord;
-          const Key: String; const KeyHash: UInt64;
-          const Value: AkvValue;
-          const IsFolder: Boolean; var FolderBaseIdx: Word64;
-          const CollisionLevel: Integer;
-          const TimestampNow: Int64);
+          const AKey: String; const AKeyHash: UInt64;
+          const AValue: AkvValue;
+          const AIsFolder: Boolean; var FolderBaseIdx: Word64;
+          const ACollisionLevel: Integer;
+          const ATimestampNow: Int64);
 var
   BaseIdx : Word64;
   RecIdx : Word64;
@@ -840,13 +805,13 @@ var
   ParentHashRec : TkvHashFileRecord;
   NewHashRec : TkvHashFileRecord;
 begin
-  if CollisionLevel > KV_HashFile_MaxSlotCollisionCount then
-    raise EkvObject.Create('Hash failure: Too many slot collisions');
+  if ACollisionLevel > KV_HashFile_MaxSlotCollisionCount then
+    raise EkvDiskObject.Create('Hash failure: Too many slot collisions');
 
-  Key1Hash := KeyHash;
+  Key1Hash := AKeyHash;
   Key2Hash := HashRec.KeyHash;
   if Key1Hash = Key2Hash then
-    raise EkvObject.Create('Hash failure: Hash collision');
+    raise EkvDiskObject.Create('Hash failure: Hash collision');
 
   BaseIdx := FHashFile.AllocateSlotRecords;
 
@@ -865,14 +830,14 @@ begin
     begin
       RecIdx := BaseIdx + Slt1;
       RecursiveHashRecSlotCollisionResolve(BaseIdx, RecIdx, HashRec,
-          Key, Key1Hash, Value, IsFolder, FolderBaseIdx, CollisionLevel + 1, TimestampNow);
+          AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx, ACollisionLevel + 1, ATimestampNow);
     end
   else
     begin
       FHashFile.SaveRecord(BaseIdx + Slt2, HashRec);
 
-      HashRecInitKeyValue(NewHashRec, Key, Key1Hash, Value, IsFolder, FolderBaseIdx);
-      NewHashRec.Timestamp := TimestampNow;
+      HashRecInitKeyValue(NewHashRec, AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx);
+      NewHashRec.Timestamp := ATimestampNow;
       FHashFile.SaveRecord(BaseIdx + Slt1, NewHashRec);
     end;
 
@@ -881,24 +846,24 @@ end;
 
 procedure TkvDataset.HashRecSlotCollisionResolve(
           const HashBaseRecIdx, HashRecIdx: Word64; var HashRec: TkvHashFileRecord;
-          const Key: String; const KeyHash: UInt64;
-          const Value: AkvValue;
-          const IsFolder: Boolean; var FolderBaseIdx: Word64;
-          const TimestampNow: Int64);
+          const AKey: String; const AKeyHash: UInt64;
+          const AValue: AkvValue;
+          const AIsFolder: Boolean; var FolderBaseIdx: Word64;
+          const ATimestampNow: Int64);
 begin
   Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
 
   RecursiveHashRecSlotCollisionResolve(HashBaseRecIdx, HashRecIdx, HashRec,
-      Key, KeyHash, Value, IsFolder, FolderBaseIdx, 1, TimestampNow);
+      AKey, AKeyHash, AValue, AIsFolder, FolderBaseIdx, 1, ATimestampNow);
 
   FHashFile.HeaderModified;
 end;
 
 procedure TkvDataset.InternalAddRecord(
-          const KeyBaseIdx: Word64; const Key: String;
-          const Value: AkvValue;
-          const IsFolder: Boolean; out FolderBaseIdx: Word64;
-          const Timestamp: Int64);
+          const KeyBaseIdx: Word64; const AKey: String;
+          const AValue: AkvValue;
+          const AIsFolder: Boolean; out FolderBaseIdx: Word64;
+          const ATimestamp: UInt64);
 var
   Hsh : UInt64;
   SltI : Word32;
@@ -912,7 +877,7 @@ var
   Fin : Boolean;
 begin
   FolderBaseIdx := KV_HashFile_InvalidIndex;
-  Hsh := kvLevel1HashString(Key, True);
+  Hsh := kvLevel1HashString(AKey, True);
   SltI := Hsh mod KV_HashFile_LevelSlotCount;
   HashRecBaseI := KeyBaseIdx;
   Fin := False;
@@ -923,8 +888,8 @@ begin
       hfrtEmpty :
         begin
           // Replace empty entry with key/value entry
-          HashRecInitKeyValue(HashRec, Key, Hsh, Value, IsFolder, FolderBaseIdx);
-          HashRec.Timestamp := Timestamp;
+          HashRecInitKeyValue(HashRec, AKey, Hsh, AValue, AIsFolder, FolderBaseIdx);
+          HashRec.Timestamp := ATimestamp;
           FHashFile.SaveRecord(HashRecI, HashRec);
           Fin := True;
         end;
@@ -937,14 +902,14 @@ begin
         end;
       hfrtKeyValue :
         begin
-          if HashRecSameKey(HashRec, Key, Hsh, HashCol) then
-            if IsFolder and (HashRec.ValueType = hfrvtFolder) then
+          if HashRecSameKey(HashRec, AKey, Hsh, HashCol) then
+            if AIsFolder and (HashRec.ValueType = hfrvtFolder) then
               begin
                 FolderBaseIdx := HashRec.ValueFolderBaseIndex;
                 exit;
               end
             else
-              raise EkvObject.CreateFmt('Key exists: %s', [Key]);
+              raise EkvDiskObject.CreateFmt('Key exists: %s', [AKey]);
           if HashCol then
             begin
               // Change key/value entry to key/value-with-hash-collision entry
@@ -952,20 +917,20 @@ begin
               HashRec.ChildSlotRecordIndex := FHashFile.AllocateSlotRecords;
               FHashFile.SaveRecord(HashRecI, HashRec);
               // Save new key/value to child slot 0
-              HashRecInitKeyValue(NewHashRec, Key, Hsh, Value, IsFolder, FolderBaseIdx);
-              NewHashRec.Timestamp := Timestamp;
+              HashRecInitKeyValue(NewHashRec, AKey, Hsh, AValue, AIsFolder, FolderBaseIdx);
+              NewHashRec.Timestamp := ATimestamp;
               FHashFile.SaveRecord(HashRec.ChildSlotRecordIndex, NewHashRec);
             end
           else
             HashRecSlotCollisionResolve(HashRecBaseI, HashRecI, HashRec,
-                Key, Hsh, Value, IsFolder, FolderBaseIdx, Timestamp);
+                AKey, Hsh, AValue, AIsFolder, FolderBaseIdx, ATimestamp);
           Fin := True;
         end;
       hfrtKeyValueWithHashCollision :
         begin
           // Check this key/value entry for duplicate key
-          if HashRecSameKey(HashRec, Key, Hsh, HashCol) then
-            raise EkvObject.CreateFmt('Key exists: %s', [Key]);
+          if HashRecSameKey(HashRec, AKey, Hsh, HashCol) then
+            raise EkvDiskObject.CreateFmt('Key exists: %s', [AKey]);
           if HashCol then
             begin
               // Check children for duplicate key and find first empty slot
@@ -976,8 +941,8 @@ begin
                   FHashFile.LoadRecord(RecI, NewHashRec);
                   case NewHashRec.RecordType of
                     hfrtKeyValue :
-                      if HashRecSameKey(NewHashRec, Key, Hsh, HashCol) then
-                        raise EkvObject.CreateFmt('Key exists: %s', [Key]);
+                      if HashRecSameKey(NewHashRec, AKey, Hsh, HashCol) then
+                        raise EkvDiskObject.CreateFmt('Key exists: %s', [AKey]);
                     hfrtEmpty :
                       if EmpI = KV_HashFile_InvalidIndex then
                         EmpI := RecI;
@@ -985,53 +950,53 @@ begin
                 end;
               if EmpI = KV_HashFile_InvalidIndex then
                 // no more empty slots left in hash collision slots
-                raise EkvObject.Create('Hash failure: Too many hash collisions');
+                raise EkvDiskObject.Create('Hash failure: Too many hash collisions');
               // Replace empty child slot with new key/value entry
-              HashRecInitKeyValue(NewHashRec, Key, Hsh, Value, IsFolder, FolderBaseIdx);
-              NewHashRec.Timestamp := Timestamp;
+              HashRecInitKeyValue(NewHashRec, AKey, Hsh, AValue, AIsFolder, FolderBaseIdx);
+              NewHashRec.Timestamp := ATimestamp;
               FHashFile.SaveRecord(EmpI, NewHashRec);
             end
           else
             // HashRec and its child collisions are moved as one
             HashRecSlotCollisionResolve(HashRecBaseI, HashRecI, HashRec,
-                Key, Hsh, Value, IsFolder, FolderBaseIdx, Timestamp);
+                AKey, Hsh, AValue, AIsFolder, FolderBaseIdx, ATimestamp);
           Fin := True;
         end;
     else
-      raise EkvObject.Create('Invalid hash record type');
+      raise EkvDiskObject.Create('Invalid hash record type');
     end;
   until Fin;
 end;
 
 procedure TkvDataset.InternalAddFolderRecords(
           const KeyBaseIdx: Word64;
-          const Folder: TkvFolderValue;
-          const Timestamp: Int64);
+          const AFolder: TkvFolderValue;
+          const ATimestamp: UInt64);
 var
   Iter : TkvDictionaryValueIterator;
   Key : String;
   Value : AkvValue;
   BaseIdx : Word64;
 begin
-  Assert(Assigned(Folder));
+  Assert(Assigned(AFolder));
 
-  if Folder.IterateFirst(Iter) then
+  if AFolder.IterateFirst(Iter) then
     repeat
-      Folder.IteratorGetKeyValue(Iter, Key, Value);
+      AFolder.IteratorGetKeyValue(Iter, Key, Value);
       Assert(Key <> '');
       Assert(Assigned(Value));
       if Value is TkvFolderValue then
         begin
-          InternalAddRecord(KeyBaseIdx, Key, nil, True, BaseIdx, Timestamp);
-          InternalAddFolderRecords(BaseIdx, TkvFolderValue(Value), Timestamp);
+          InternalAddRecord(KeyBaseIdx, Key, nil, True, BaseIdx, ATimestamp);
+          InternalAddFolderRecords(BaseIdx, TkvFolderValue(Value), ATimestamp);
         end
       else
-        InternalAddRecord(KeyBaseIdx, Key, Value, False, BaseIdx, Timestamp);
-    until not Folder.IterateNext(Iter);
+        InternalAddRecord(KeyBaseIdx, Key, Value, False, BaseIdx, ATimestamp);
+    until not AFolder.IterateNext(Iter);
 end;
 
-procedure TkvDataset.InternalAddKeyValue(const Key: String; const Value: AkvValue;
-          const Timestamp: Int64);
+procedure TkvDataset.InternalAddKeyValue(const AKey: String; const AValue: AkvValue;
+          const ATimestamp: UInt64);
 var
   KeyLen : Integer;
   BaseIdx : Word64;
@@ -1039,189 +1004,54 @@ var
   FolderSepI : Integer;
   SubKey : String;
 begin
-  KeyLen := Length(Key);
+  KeyLen := Length(AKey);
 
   Assert(KeyLen > 0);
   Assert(KeyLen <= KV_HashFile_MaxKeyLength);
-  Assert(not FUseFolders or not Key.EndsWith('/'));
-  Assert(Assigned(Value));
+  Assert(not FUseFolders or not AKey.EndsWith('/'));
+  Assert(Assigned(AValue));
 
   if not FUseFolders then
     begin
       BaseIdx := 0;
-      SubKey := Key;
-      InternalAddRecord(BaseIdx, SubKey, Value, False, BaseIdx, Timestamp);
+      SubKey := AKey;
+      InternalAddRecord(BaseIdx, SubKey, AValue, False, BaseIdx, ATimestamp);
     end
   else
     begin
       BaseIdx := 0;
       StartI := 0;
       repeat
-        FolderSepI := Key.IndexOf(Char('/'), StartI);
+        FolderSepI := AKey.IndexOf(Char('/'), StartI);
         if FolderSepI = 0 then
-          raise EkvObject.Create('Invalid key: Empty folder name');
+          raise EkvDiskObject.Create('Invalid key: Empty folder name');
         if FolderSepI > 0 then
           begin
-            SubKey := Copy(Key, StartI + 1, FolderSepI - StartI);
-            InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, Timestamp);
+            SubKey := Copy(AKey, StartI + 1, FolderSepI - StartI);
+            InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, ATimestamp);
             StartI := FolderSepI + 1;
           end;
       until FolderSepI < 0;
 
       if StartI = 0 then
-        SubKey := Key
+        SubKey := AKey
       else
-        SubKey := Copy(Key, StartI + 1, KeyLen - StartI);
+        SubKey := Copy(AKey, StartI + 1, KeyLen - StartI);
 
-      if Value is TkvFolderValue then
+      if AValue is TkvFolderValue then
         begin
-          InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, Timestamp);
-          InternalAddFolderRecords(BaseIdx, TkvFolderValue(Value), Timestamp);
+          InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, ATimestamp);
+          InternalAddFolderRecords(BaseIdx, TkvFolderValue(AValue), ATimestamp);
         end
       else
-        InternalAddRecord(BaseIdx, SubKey, Value, False, BaseIdx, Timestamp);
+        InternalAddRecord(BaseIdx, SubKey, AValue, False, BaseIdx, ATimestamp);
     end;
-end;
-
-procedure TkvDataset.AddRecord(const Key: String; const Value: AkvValue);
-var
-  KeyLen : Integer;
-begin
-  KeyLen := Length(Key);
-  if (KeyLen = 0) or (KeyLen > KV_HashFile_MaxKeyLength) then
-    raise EkvObject.Create('Invalid key length');
-  if FUseFolders and Key.EndsWith('/') then
-    raise EkvObject.Create('Invalid key: Folder reference');
-  if not Assigned(Value) then
-    raise EkvObject.Create('Invalid value');
-  InternalAddKeyValue(Key, Value, kvTimestampNow);
-end;
-
-procedure TkvDataset.AddRecordString(const Key: String; const Value: String);
-var
-  V : TkvStringValue;
-begin
-  V := TkvStringValue.Create(Value);
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.AddRecordInteger(const Key: String; const Value: Int64);
-var
-  V : TkvIntegerValue;
-begin
-  V := TkvIntegerValue.Create(Value);
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.AddRecordFloat(const Key: String; const Value: Double);
-var
-  V : TkvFloatValue;
-begin
-  V := TkvFloatValue.Create(Value);
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.AddRecordBoolean(const Key: String; const Value: Boolean);
-var
-  V : TkvBooleanValue;
-begin
-  V := TkvBooleanValue.Create(Value);
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.AddRecordDateTime(const Key: String; const Value: TDateTime);
-var
-  V : TkvDateTimeValue;
-begin
-  V := TkvDateTimeValue.Create(Value);
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.AddRecordBinary(const Key: String; const Value: kvByteArray);
-var
-  V : TkvBinaryValue;
-begin
-  V := TkvBinaryValue.Create(Value);
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.AddRecordNull(const Key: String);
-var
-  V : TkvNullValue;
-begin
-  V := TkvNullValue.Create;
-  try
-    AddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.MakePath(const KeyPath: String);
-var
-  KeyLen : Integer;
-  BaseIdx : Word64;
-  StartI : Integer;
-  FolderSepI : Integer;
-  SubKey : String;
-  TimestampNow : Int64;
-begin
-  KeyLen := Length(KeyPath);
-  if (KeyLen = 0) or (KeyLen > KV_HashFile_MaxKeyLength) then
-    raise EkvObject.Create('Invalid key length');
-
-  TimestampNow := kvTimestampNow;
-  BaseIdx := 0;
-  StartI := 0;
-  repeat
-    FolderSepI := KeyPath.IndexOf(Char('/'), StartI);
-    if FolderSepI = 0 then
-      raise EkvObject.Create('Invalid key: Empty folder name');
-    if FolderSepI > 0 then
-      begin
-        SubKey := Copy(KeyPath, StartI + 1, FolderSepI - StartI);
-        InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, TimestampNow);
-        StartI := FolderSepI + 1;
-      end;
-  until FolderSepI < 0;
-  if StartI = 0 then
-    SubKey := KeyPath
-  else
-    if StartI = KeyLen then
-      exit
-    else
-      SubKey := Copy(KeyPath, StartI + 1, KeyLen - StartI);
-  InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, TimestampNow);
 end;
 
 const
   KV_Dataset_LocateMaxLevels = 128;
 
-function TkvDataset.LocateRecordFromBase(const BaseIndex: Word64; const Key: String;
+function TkvDataset.LocateRecordFromBase(const BaseIndex: Word64; const AKey: String;
          out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
 var
   Hsh : UInt64;
@@ -1232,18 +1062,18 @@ var
   Level : Integer;
   R, Fin : Boolean;
 begin
-  Assert(Key <> '');
+  Assert(AKey <> '');
 
   Level := 0;
   R := False;
-  Hsh := kvLevel1HashString(Key, True);
+  Hsh := kvLevel1HashString(AKey, True);
   SltI := Hsh mod KV_HashFile_LevelSlotCount;
   HashRecBaseI := BaseIndex;
   Fin := False;
   repeat
     Inc(Level);
     if Level = KV_Dataset_LocateMaxLevels then
-      raise EkvObject.Create('Key too deep');
+      raise EkvDiskObject.Create('Key too deep');
     HashRecI := HashRecBaseI + SltI;
     FHashFile.LoadRecord(HashRecI, HashRec);
     case HashRec.RecordType of
@@ -1263,7 +1093,7 @@ begin
       hfrtKeyValue :
         begin
           // Search complete, possible match, compare keys
-          R := HashRecSameKey(HashRec, Key, Hsh, HashCol);
+          R := HashRecSameKey(HashRec, AKey, Hsh, HashCol);
           if R then
             HashRecIdx := HashRecI;
           Fin := True;
@@ -1271,7 +1101,7 @@ begin
       hfrtKeyValueWithHashCollision :
         begin
           // Check key/value entry first
-          R := HashRecSameKey(HashRec, Key, Hsh, HashCol);
+          R := HashRecSameKey(HashRec, AKey, Hsh, HashCol);
           if R then
             HashRecIdx := HashRecI
           else
@@ -1284,7 +1114,7 @@ begin
                   FHashFile.LoadRecord(HashRecI, HashRec);
                   R := HashRec.RecordType = hfrtKeyValue;
                   if R then
-                    R := HashRecSameKey(HashRec, Key, Hsh, HashCol);
+                    R := HashRecSameKey(HashRec, AKey, Hsh, HashCol);
                   if R then
                     begin
                       HashRecIdx := HashRecI;
@@ -1295,7 +1125,7 @@ begin
           Fin := True;
         end;
     else
-      raise EkvObject.Create('Invalid hash record type');
+      raise EkvDiskObject.Create('Invalid hash record type');
     end;
   until Fin;
   if not R then
@@ -1303,7 +1133,7 @@ begin
   Result := R;
 end;
 
-function TkvDataset.LocateRecord(const Key: String;
+function TkvDataset.LocateRecord(const AKey: String;
          out HashRecIdx: Word64; out HashRec: TkvHashFileRecord): Boolean;
 var
   KeyLen : Integer;
@@ -1313,62 +1143,46 @@ var
   SubKey : String;
 begin
   if not FUseFolders then
-    Result := LocateRecordFromBase(0, Key, HashRecIdx, HashRec)
+    Result := LocateRecordFromBase(0, AKey, HashRecIdx, HashRec)
   else
     begin
-      KeyLen := Length(Key);
+      KeyLen := Length(AKey);
       BaseIdx := 0;
       StartI := 0;
       repeat
-        FolderSepI := Key.IndexOf(Char('/'), StartI);
+        FolderSepI := AKey.IndexOf(Char('/'), StartI);
         if FolderSepI = 0 then
-          raise EkvObject.Create('Invalid key: Empty folder name');
+          raise EkvDiskObject.Create('Invalid key: Empty folder name');
         if FolderSepI > 0 then
           begin
-            SubKey := Copy(Key, StartI + 1, FolderSepI - StartI);
+            SubKey := Copy(AKey, StartI + 1, FolderSepI - StartI);
             Result := LocateRecordFromBase(BaseIdx, SubKey, HashRecIdx, HashRec);
             if not Result then
               exit;
             if HashRec.ValueType <> hfrvtFolder then
-              raise EkvObject.Create('Invalid key: Not a folder');
+              raise EkvDiskObject.Create('Invalid key: Not a folder');
             BaseIdx := HashRec.ValueFolderBaseIndex;
             StartI := FolderSepI + 1;
           end;
       until FolderSepI < 0;
 
       if StartI = 0 then
-        SubKey := Key
+        SubKey := AKey
       else
-        SubKey := Copy(Key, StartI + 1, KeyLen - StartI);
+        SubKey := Copy(AKey, StartI + 1, KeyLen - StartI);
 
       Result := LocateRecordFromBase(BaseIdx, SubKey, HashRecIdx, HashRec);
     end;
 end;
 
-function TkvDataset.FolderExists(const Key: String): Boolean;
+function TkvDataset.RecordExists(const AKey: String): Boolean;
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if Key = '/' then
-    Result := True
-  else
-    if LocateRecord(Key, HashRecIdx, HashRec) then
-      Result := HashRec.ValueType = hfrvtFolder
-    else
-      Result := False;
-end;
-
-function TkvDataset.RecordExists(const Key: String): Boolean;
-var
-  HashRecIdx : Word64;
-  HashRec : TkvHashFileRecord;
-begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  Result := LocateRecord(Key, HashRecIdx, HashRec);
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  Result := LocateRecord(AKey, HashRecIdx, HashRec);
 end;
 
 function TkvDataset.HashRecToKey(const HashRec: TkvHashFileRecord): String;
@@ -1400,7 +1214,7 @@ begin
 
   case HashRec.ValueType of
     hfrvtNone  :
-      raise EkvObject.Create('No value');
+      raise EkvDiskObject.Create('No value');
     hfrvtShort :
       begin
         V := kvCreateValueFromTypeId(HashRec.ValueTypeId);
@@ -1428,7 +1242,7 @@ begin
         Result := V;
       end;
   else
-    raise EkvObject.Create('Invalid value type');
+    raise EkvDiskObject.Create('Invalid value type');
   end;
 end;
 
@@ -1493,213 +1307,144 @@ begin
   Result := GetAllFolderRecords(0);
 end;
 
-function TkvDataset.GetRecordIfExists(const Key: String): AkvValue;
+function TkvDataset.GetRecordIfExists(const AKey: String): AkvValue;
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if Key = '/' then
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if AKey = '/' then
     Result := GetAllRecords
   else
-    if not LocateRecord(Key, HashRecIdx, HashRec) then
+    if not LocateRecord(AKey, HashRecIdx, HashRec) then
       Result := nil
     else
       Result := GetFolderRecord(HashRec);
 end;
 
-function TkvDataset.GetRecord(const Key: String): AkvValue;
+function TkvDataset.GetRecord(const AKey: String): AkvValue;
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if Key = '/' then
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if AKey = '/' then
     Result := GetAllRecords
   else
-    if not LocateRecord(Key, HashRecIdx, HashRec) then
-      raise EkvObject.CreateFmt('Key not found: %s', [Key])
+    if not LocateRecord(AKey, HashRecIdx, HashRec) then
+      raise EkvDiskObject.CreateFmt('Key not found: %s', [AKey])
     else
       Result := GetFolderRecord(HashRec);
 end;
 
-function TkvDataset.GetRecordAsString(const Key: String): String;
+function TkvDataset.FolderExists(const AKey: String): Boolean;
 var
-  V : AkvValue;
+  HashRecIdx : Word64;
+  HashRec : TkvHashFileRecord;
 begin
-  V := GetRecord(Key);
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if AKey = '/' then
+    Result := True
+  else
+    if LocateRecord(AKey, HashRecIdx, HashRec) then
+      Result := HashRec.ValueType = hfrvtFolder
+    else
+      Result := False;
+end;
+
+procedure TkvDataset.MakePath(const AKeyPath: String);
+var
+  KeyLen : Integer;
+  BaseIdx : Word64;
+  StartI : Integer;
+  FolderSepI : Integer;
+  SubKey : String;
+  Timestamp : UInt64;
+begin
+  KeyLen := Length(AKeyPath);
+  if (KeyLen = 0) or (KeyLen > KV_HashFile_MaxKeyLength) then
+    raise EkvDiskObject.Create('Invalid key length');
+
+  Timestamp := FHashFile.GetNextTimestamp;
   try
-    Result := V.AsString;
+    BaseIdx := 0;
+    StartI := 0;
+    repeat
+      FolderSepI := AKeyPath.IndexOf(Char('/'), StartI);
+      if FolderSepI = 0 then
+        raise EkvDiskObject.Create('Invalid key: Empty folder name');
+      if FolderSepI > 0 then
+        begin
+          SubKey := Copy(AKeyPath, StartI + 1, FolderSepI - StartI);
+          InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, Timestamp);
+          StartI := FolderSepI + 1;
+        end;
+    until FolderSepI < 0;
+    if StartI = 0 then
+      SubKey := AKeyPath
+    else
+      if StartI = KeyLen then
+        exit
+      else
+        SubKey := Copy(AKeyPath, StartI + 1, KeyLen - StartI);
+    InternalAddRecord(BaseIdx, SubKey, nil, True, BaseIdx, Timestamp);
   finally
-    V.Free;
+    FHashFile.UpdateTimestamp(Timestamp);
+    FHashFile.UpdateHeader;
   end;
 end;
 
-function TkvDataset.GetRecordAsInteger(const Key: String): Int64;
+procedure TkvDataset.AddRecord(const AKey: String; const AValue: AkvValue);
 var
-  V : AkvValue;
+  KeyLen : Integer;
+  Timestamp : UInt64;
 begin
-  V := GetRecord(Key);
+  KeyLen := Length(AKey);
+  if (KeyLen = 0) or (KeyLen > KV_HashFile_MaxKeyLength) then
+    raise EkvDiskObject.Create('Invalid key length');
+  if FUseFolders and AKey.EndsWith('/') then
+    raise EkvDiskObject.Create('Invalid key: Folder reference');
+  if not Assigned(AValue) then
+    raise EkvDiskObject.Create('Invalid value');
+  Timestamp := FHashFile.GetNextTimestamp;
   try
-    Result := V.AsInteger;
+    InternalAddKeyValue(AKey, AValue, Timestamp);
   finally
-    V.Free;
+    FHashFile.UpdateTimestamp(Timestamp);
+    FHashFile.UpdateHeader;
   end;
 end;
 
-function TkvDataset.GetRecordAsFloat(const Key: String): Double;
+procedure TkvDataset.SetRecord(const AKey: String; const AValue: AkvValue);
 var
-  V : AkvValue;
+  HashRecIdx : Word64;
+  HashRec : TkvHashFileRecord;
+  Timestamp : UInt64;
 begin
-  V := GetRecord(Key);
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if not Assigned(AValue) then
+    raise EkvDiskObject.Create('Invalid value');
+  if not LocateRecord(AKey, HashRecIdx, HashRec) then
+    raise EkvDiskObject.CreateFmt('Key not found: %s', [AKey]);
+  if HashRec.ValueType = hfrvtFolder then
+    raise EkvDiskObject.CreateFmt('Key references a folder: %s', [AKey]);
+  HashRecSetValue(HashRec, AValue);
+  Timestamp := FHashFile.GetNextTimestamp;
+  HashRec.Timestamp := Timestamp;
   try
-    Result := V.AsFloat;
+    FHashFile.SaveRecord(HashRecIdx, HashRec);
   finally
-    V.Free;
+    FHashFile.UpdateTimestamp(Timestamp);
+    FHashFile.UpdateHeader;
   end;
-end;
-
-function TkvDataset.GetRecordAsBoolean(const Key: String): Boolean;
-var
-  V : AkvValue;
-begin
-  V := GetRecord(Key);
-  try
-    Result := V.AsBoolean;
-  finally
-    V.Free;
-  end;
-end;
-
-function TkvDataset.GetRecordAsDateTime(const Key: String): TDateTime;
-var
-  V : AkvValue;
-begin
-  V := GetRecord(Key);
-  try
-    Result := V.AsDateTime;
-  finally
-    V.Free;
-  end;
-end;
-
-function TkvDataset.GetRecordAsBinary(const Key: String): kvByteArray;
-var
-  V : AkvValue;
-begin
-  V := GetRecord(Key);
-  try
-    Result := V.AsBinary;
-  finally
-    V.Free;
-  end;
-end;
-
-function TkvDataset.GetRecordIsNull(const Key: String): Boolean;
-var
-  V : AkvValue;
-begin
-  V := GetRecord(Key);
-  try
-    Result := V is TkvNullValue;
-  finally
-    V.Free;
-  end;
-end;
-
-function TkvDataset.GetRecordAsStringDef(const Key: String; const DefaultValue: String): String;
-var
-  Val : AkvValue;
-begin
-  Val := GetRecordIfExists(Key);
-  if not Assigned(Val) then
-    Result := DefaultValue
-  else
-  if Val is TkvNullValue then
-    Result := DefaultValue
-  else
-    try
-      Result := Val.AsString;
-    except
-      Result := DefaultValue;
-    end;
-end;
-
-function TkvDataset.GetRecordAsIntegerDef(const Key: String; const DefaultValue: Int64): Int64;
-var
-  Val : AkvValue;
-begin
-  Val := GetRecordIfExists(Key);
-  if not Assigned(Val) then
-    Result := DefaultValue
-  else
-  if Val is TkvNullValue then
-    Result := DefaultValue
-  else
-    try
-      Result := Val.AsInteger;
-    except
-      Result := DefaultValue;
-    end;
-end;
-
-function TkvDataset.GetRecordAsFloatDef(const Key: String; const DefaultValue: Double): Double;
-var
-  Val : AkvValue;
-begin
-  Val := GetRecordIfExists(Key);
-  if not Assigned(Val) then
-    Result := DefaultValue
-  else
-  if Val is TkvNullValue then
-    Result := DefaultValue
-  else
-    try
-      Result := Val.AsFloat;
-    except
-      Result := DefaultValue;
-    end;
-end;
-
-function TkvDataset.GetRecordAsBooleanDef(const Key: String; const DefaultValue: Boolean): Boolean;
-var
-  Val : AkvValue;
-begin
-  Val := GetRecordIfExists(Key);
-  if not Assigned(Val) then
-    Result := DefaultValue
-  else
-  if Val is TkvNullValue then
-    Result := DefaultValue
-  else
-    try
-      Result := Val.AsBoolean;
-    except
-      Result := DefaultValue;
-    end;
-end;
-function TkvDataset.GetRecordAsDateTimeDef(const Key: String; const DefaultValue: TDateTime): TDateTime;
-var
-  Val : AkvValue;
-begin
-  Val := GetRecordIfExists(Key);
-  if not Assigned(Val) then
-    Result := DefaultValue
-  else
-  if Val is TkvNullValue then
-    Result := DefaultValue
-  else
-    try
-      Result := Val.AsDateTime;
-    except
-      Result := DefaultValue;
-    end;
 end;
 
 procedure TkvDataset.ListOfChildKeys(const BaseIdx: Word32;
-          const D: TkvDictionaryValue; const Recurse: Boolean);
+          const D: TkvDictionaryValue; const ARecurse: Boolean);
 
 var
   I : Integer;
@@ -1711,7 +1456,7 @@ var
   function ChildRecToValue: AkvValue;
   begin
     if ChildRec.ValueType = hfrvtFolder then
-      if Recurse then
+      if ARecurse then
         Result := ListOfFolderKeys(ChildRec, True)
       else
         Result := TkvDictionaryValue.Create
@@ -1727,7 +1472,7 @@ begin
       case ChildRec.RecordType of
         hfrtEmpty : ;
         hfrtParentSlot :
-          ListOfChildKeys(ChildRec.ChildSlotRecordIndex, D, Recurse);
+          ListOfChildKeys(ChildRec.ChildSlotRecordIndex, D, ARecurse);
         hfrtKeyValue :
           begin
             Key := HashRecToKey(ChildRec);
@@ -1739,21 +1484,21 @@ begin
             Key := HashRecToKey(ChildRec);
             Value := ChildRecToValue;
             D.Add(Key, Value);
-            ListOfChildKeys(ChildRec.ChildSlotRecordIndex, D, Recurse);
+            ListOfChildKeys(ChildRec.ChildSlotRecordIndex, D, ARecurse);
           end;
       end;
     end;
 end;
 
 function TkvDataset.ListOfFolderKeys(const HashRec: TkvHashFileRecord;
-         const Recurse: Boolean): TkvDictionaryValue;
+         const ARecurse: Boolean): TkvDictionaryValue;
 var
   D : TkvDictionaryValue;
 begin
   Assert(HashRec.ValueType = hfrvtFolder);
   D := TkvDictionaryValue.Create;
   try
-    ListOfChildKeys(HashRec.ValueFolderBaseIndex, D, Recurse);
+    ListOfChildKeys(HashRec.ValueFolderBaseIndex, D, ARecurse);
   except
     D.Free;
     raise;
@@ -1761,13 +1506,13 @@ begin
   Result := D;
 end;
 
-function TkvDataset.ListOfRootKeys(const Recurse: Boolean): TkvDictionaryValue;
+function TkvDataset.ListOfRootKeys(const ARecurse: Boolean): TkvDictionaryValue;
 var
   D : TkvDictionaryValue;
 begin
   D := TkvDictionaryValue.Create;
   try
-    ListOfChildKeys(0, D, Recurse);
+    ListOfChildKeys(0, D, ARecurse);
   except
     D.Free;
     raise;
@@ -1775,233 +1520,57 @@ begin
   Result := D;
 end;
 
-function TkvDataset.ListOfKeys(const KeyPath: String; const Recurse: Boolean): TkvDictionaryValue;
-var
-  HashRecIdx : Word64;
-  HashRec : TkvHashFileRecord;
-begin
-  if (KeyPath = '') or (KeyPath = '/') then
-    Result := ListOfRootKeys(Recurse)
-  else
-    begin
-      if not LocateRecord(KeyPath, HashRecIdx, HashRec) then
-        raise EkvObject.CreateFmt('Path not found: %s', [KeyPath]);
-      if HashRec.ValueType <> hfrvtFolder then
-        raise EkvObject.CreateFmt('Path does not specify a folder: %s', [KeyPath]);
-      Result := ListOfFolderKeys(HashRec, Recurse);
-    end;
-end;
-
-procedure TkvDataset.SetRecord(const Key: String; const Value: AkvValue);
-var
-  HashRecIdx : Word64;
-  HashRec : TkvHashFileRecord;
-begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if not Assigned(Value) then
-    raise EkvObject.Create('Invalid value');
-  if not LocateRecord(Key, HashRecIdx, HashRec) then
-    raise EkvObject.CreateFmt('Key not found: %s', [Key]);
-  if HashRec.ValueType = hfrvtFolder then
-    raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
-  HashRecSetValue(HashRec, Value);
-  HashRec.Timestamp := kvTimestampNow;
-  FHashFile.SaveRecord(HashRecIdx, HashRec);
-end;
-
-procedure TkvDataset.SetRecordAsString(const Key: String; const Value: String);
-var
-  V : TkvStringValue;
-begin
-  V := TkvStringValue.Create(Value);
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetRecordAsInteger(const Key: String; const Value: Int64);
-var
-  V : TkvIntegerValue;
-begin
-  V := TkvIntegerValue.Create(Value);
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetRecordAsFloat(const Key: String; const Value: Double);
-var
-  V : TkvFloatValue;
-begin
-  V := TkvFloatValue.Create(Value);
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetRecordAsBoolean(const Key: String; const Value: Boolean);
-var
-  V : TkvBooleanValue;
-begin
-  V := TkvBooleanValue.Create(Value);
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetRecordAsDateTime(const Key: String; const Value: TDateTime);
-var
-  V : TkvDateTimeValue;
-begin
-  V := TkvDateTimeValue.Create(Value);
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetRecordAsBinary(const Key: String; const Value: kvByteArray);
-var
-  V : TkvBinaryValue;
-begin
-  V := TkvBinaryValue.Create(Value);
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetRecordNull(const Key: String);
-var
-  V : TkvNullValue;
-begin
-  V := TkvNullValue.Create;
-  try
-    SetRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataset.SetOrAddRecord(const Key: String; const Value: AkvValue);
+procedure TkvDataset.SetOrAddRecord(const AKey: String; const AValue: AkvValue);
 var
   KeyLen : Integer;
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
+  Timestamp : UInt64;
 begin
-  KeyLen := Length(Key);
+  KeyLen := Length(AKey);
   if KeyLen = 0 then
-    raise EkvObject.Create('Invalid key');
-  if not Assigned(Value) then
-    raise EkvObject.Create('Invalid value');
-  if not LocateRecord(Key, HashRecIdx, HashRec) then
+    raise EkvDiskObject.Create('Invalid key');
+  if not Assigned(AValue) then
+    raise EkvDiskObject.Create('Invalid value');
+  if not LocateRecord(AKey, HashRecIdx, HashRec) then
     begin
       if KeyLen > KV_HashFile_MaxKeyLength then
-        raise EkvObject.Create('Invalid key length');
-      if FUseFolders and Key.EndsWith('/') then
-        raise EkvObject.Create('Invalid key: Folder reference');
-      InternalAddKeyValue(Key, Value, kvTimestampNow);
-      exit;
+        raise EkvDiskObject.Create('Invalid key length');
+      if FUseFolders and AKey.EndsWith('/') then
+        raise EkvDiskObject.Create('Invalid key: Folder reference');
+      Timestamp := FHashFile.GetNextTimestamp;
+      try
+        InternalAddKeyValue(AKey, AValue, Timestamp);
+      finally
+        FHashFile.UpdateTimestamp(Timestamp);
+        FHashFile.UpdateHeader;
+      end;
+    end
+  else
+    begin
+      if HashRec.ValueType = hfrvtFolder then
+        raise EkvDiskObject.CreateFmt('Key references a folder: %s', [AKey]);
+      Timestamp := FHashFile.GetNextTimestamp;
+      HashRecSetValue(HashRec, AValue);
+      HashRec.Timestamp := Timestamp;
+      try
+        FHashFile.SaveRecord(HashRecIdx, HashRec);
+      finally
+        FHashFile.UpdateTimestamp(Timestamp);
+        FHashFile.UpdateHeader;
+      end;
     end;
-  if HashRec.ValueType = hfrvtFolder then
-    raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
-  HashRecSetValue(HashRec, Value);
-  HashRec.Timestamp := kvTimestampNow;
-  FHashFile.SaveRecord(HashRecIdx, HashRec);
-end;
-
-procedure TkvDataSet.SetOrAddRecordAsString(const Key: String; const Value: String);
-var
-  V : TkvStringValue;
-begin
-  V := TkvStringValue.Create(Value);
-  try
-    SetOrAddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataSet.SetOrAddRecordAsInteger(const Key: String; const Value: Int64);
-var
-  V : TkvIntegerValue;
-begin
-  V := TkvIntegerValue.Create(Value);
-  try
-    SetOrAddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataSet.SetOrAddRecordAsFloat(const Key: String; const Value: Double);
-var
-  V : TkvFloatValue;
-begin
-  V := TkvFloatValue.Create(Value);
-  try
-    SetOrAddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataSet.SetOrAddRecordAsBoolean(const Key: String; const Value: Boolean);
-var
-  V : TkvBooleanValue;
-begin
-  V := TkvBooleanValue.Create(Value);
-  try
-    SetOrAddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataSet.SetOrAddRecordAsDateTime(const Key: String; const Value: TDateTime);
-var
-  V : TkvDateTimeValue;
-begin
-  V := TkvDateTimeValue.Create(Value);
-  try
-    SetOrAddRecord(Key, V);
-  finally
-    V.Free;
-  end;
-end;
-
-procedure TkvDataSet.SetOrAddRecordAsBinary(const Key: String; const Value: kvByteArray);
-var
-  V : TkvBinaryValue;
-begin
-  V := TkvBinaryValue.Create(Value);
-  try
-    SetOrAddRecord(Key, V);
-  finally
-    V.Free;
-  end;
 end;
 
 procedure TkvDataSet.HashRecAppendValue_Rewrite(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
+          const AValue: AkvValue);
 var
   OldVal : AkvValue;
   NewVal : AkvValue;
 begin
   OldVal := HashRecToValue(HashRec);
   try
-    NewVal := ValueOpAppend(OldVal, Value);
+    NewVal := ValueOpAppend(OldVal, AValue);
   finally
     OldVal.Free;
   end;
@@ -2014,7 +1583,7 @@ end;
 
 // Appends value to HashRec value for String or Binary values
 procedure TkvDataSet.HashRecAppendValue_StrOrBin(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
+          const AValue: AkvValue);
 var
   DataBuf : Pointer;
   DataSize : Integer;
@@ -2024,10 +1593,10 @@ var
   NewValLength : Word32;
   NewValLenEnc : Word32;
 begin
-  if Value.TypeId <> HashRec.ValueTypeId then
-    raise EkvObject.Create('Append value type mismatch');
+  if AValue.TypeId <> HashRec.ValueTypeId then
+    raise EkvDiskObject.Create('Append value type mismatch');
 
-  Value.GetDataBuf(DataBuf, DataSize);
+  AValue.GetDataBuf(DataBuf, DataSize);
   OldSize := HashRec.ValueSize;
   NewSize := OldSize + DataSize;
 
@@ -2046,7 +1615,7 @@ begin
   else
   if (NewSize <= 512) or
      (HashRec.ValueType = hfrvtShort) then
-    HashRecAppendValue_Rewrite(HashRec, Value)
+    HashRecAppendValue_Rewrite(HashRec, AValue)
   else
     // NewSize needs to be big enough that value's internal VarWord32 length
     // encoding use the 32 bit encoding before AppendChain can be used;
@@ -2066,7 +1635,7 @@ begin
 end;
 
 procedure TkvDataSet.HashRecAppendValue_List(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
+          const AValue: AkvValue);
 var
   List : TkvListValue;
   OldSize : Integer;
@@ -2083,9 +1652,9 @@ var
   OldCountEncSize : Integer;
   F : Integer;
 begin
-  if not (Value is TkvListValue) then
-    raise EkvObject.Create('Append value type mismatch');
-  List := TkvListValue(Value);
+  if not (AValue is TkvListValue) then
+    raise EkvDiskObject.Create('Append value type mismatch');
+  List := TkvListValue(AValue);
   DataCount := List.GetCount;
   if DataCount = 0 then
     exit;
@@ -2099,7 +1668,7 @@ begin
 
   if (NewSize <= 512) or
      (HashRec.ValueType = hfrvtShort) then
-    HashRecAppendValue_Rewrite(HashRec, Value)
+    HashRecAppendValue_Rewrite(HashRec, AValue)
   else
     begin
       Assert(HashRec.ValueType = hfrvtLong);
@@ -2108,7 +1677,7 @@ begin
       NewCount := Integer(OldCount) + DataCount;
       NewCountEncSize := kvVarWord32EncodedSize(NewCount);
       if NewCountEncSize <> OldCountEncSize then
-        HashRecAppendValue_Rewrite(HashRec, Value)
+        HashRecAppendValue_Rewrite(HashRec, AValue)
       else
         begin
           GetMem(DataBuf, DataSize);
@@ -2124,7 +1693,7 @@ begin
 end;
 
 procedure TkvDataSet.HashRecAppendValue_Dictionary(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
+          const AValue: AkvValue);
 var
   Dict : TkvDictionaryValue;
   OldSize : Integer;
@@ -2140,9 +1709,9 @@ var
   OldCountEncSize : Integer;
   F : Integer;
 begin
-  if not (Value is TkvDictionaryValue) then
-    raise EkvObject.Create('Append value type mismatch');
-  Dict := TkvDictionaryValue(Value);
+  if not (AValue is TkvDictionaryValue) then
+    raise EkvDiskObject.Create('Append value type mismatch');
+  Dict := TkvDictionaryValue(AValue);
   DataCount := Dict.GetCount;
   if DataCount = 0 then
     exit;
@@ -2153,7 +1722,7 @@ begin
 
   if (NewSize <= 512) or
      (HashRec.ValueType = hfrvtShort) then
-    HashRecAppendValue_Rewrite(HashRec, Value)
+    HashRecAppendValue_Rewrite(HashRec, AValue)
   else
     begin
       Assert(HashRec.ValueType = hfrvtLong);
@@ -2162,7 +1731,7 @@ begin
       NewCount := Integer(OldCount) + DataCount;
       NewCountEncSize := kvVarWord32EncodedSize(NewCount);
       if NewCountEncSize <> OldCountEncSize then
-        HashRecAppendValue_Rewrite(HashRec, Value)
+        HashRecAppendValue_Rewrite(HashRec, AValue)
       else
         begin
           GetMem(DataBuf, DataSize);
@@ -2179,45 +1748,40 @@ end;
 
 // Appends value to HashRec value
 procedure TkvDataSet.HashRecAppendValue(var HashRec: TkvHashFileRecord;
-          const Value: AkvValue);
+          const AValue: AkvValue);
 begin
   case HashRec.ValueTypeId of
     KV_Value_TypeId_String,
-    KV_Value_TypeId_Binary      : HashRecAppendValue_StrOrBin(HashRec, Value);
-    KV_Value_TypeId_List        : HashRecAppendValue_List(HashRec, Value);
+    KV_Value_TypeId_Binary      : HashRecAppendValue_StrOrBin(HashRec, AValue);
+    KV_Value_TypeId_List        : HashRecAppendValue_List(HashRec, AValue);
     KV_Value_TypeId_Dictionary,
-    KV_Value_TypeId_Folder      : HashRecAppendValue_Dictionary(HashRec, Value);
+    KV_Value_TypeId_Folder      : HashRecAppendValue_Dictionary(HashRec, AValue);
   else
-    raise EkvObject.Create('Record value type is not appendable');
+    raise EkvDiskObject.Create('Record value type is not appendable');
   end;
 end;
 
-procedure TkvDataset.AppendRecord(const Key: String; const Value: AkvValue);
+procedure TkvDataset.AppendRecord(const AKey: String; const AValue: AkvValue);
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
+  Timestamp : UInt64;
 begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if not LocateRecord(Key, HashRecIdx, HashRec) then
-    raise EkvObject.CreateFmt('Key not found: %s', [Key]);
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if not LocateRecord(AKey, HashRecIdx, HashRec) then
+    raise EkvDiskObject.CreateFmt('Key not found: %s', [AKey]);
   Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
   if HashRec.ValueType = hfrvtFolder then
-    raise EkvObject.CreateFmt('Key references a folder: %s', [Key]);
-  HashRecAppendValue(HashRec, Value);
-  HashRec.Timestamp := kvTimestampNow;
-  FHashFile.SaveRecord(HashRecIdx, HashRec);
-end;
-
-procedure TkvDataset.AppendRecordString(const Key: String; const Value: String);
-var
-  V : TkvStringValue;
-begin
-  V := TkvStringValue.Create(Value);
+    raise EkvDiskObject.CreateFmt('Key references a folder: %s', [AKey]);
+  HashRecAppendValue(HashRec, AValue);
+  Timestamp := FHashFile.GetNextTimestamp;
+  HashRec.Timestamp := Timestamp;
   try
-    AppendRecord(Key, V);
+    FHashFile.SaveRecord(HashRecIdx, HashRec);
   finally
-    V.Free;
+    FHashFile.UpdateTimestamp(Timestamp);
+    FHashFile.UpdateHeader;
   end;
 end;
 
@@ -2294,58 +1858,83 @@ begin
   FHashFile.SaveRecord(HashRecIdx, HashRec);
 end;
 
-procedure TkvDataset.DeleteRecord(const Key: String);
+procedure TkvDataset.DeleteRecord(const AKey: String);
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
-  if Key = '' then
-    raise EkvObject.Create('Invalid key');
-  if not LocateRecord(Key, HashRecIdx, HashRec) then
-    raise EkvObject.CreateFmt('Key not found: %s', [Key]);
+  if AKey = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if not LocateRecord(AKey, HashRecIdx, HashRec) then
+    raise EkvDiskObject.CreateFmt('Key not found: %s', [AKey]);
   Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
-  InternalDeleteRecord(HashRecIdx, HashRec);
+  try
+    InternalDeleteRecord(HashRecIdx, HashRec);
+  finally
+    FHashFile.UpdateHeader;
+  end;
 end;
 
-procedure TkvDataset.DeleteFolderRecords(const Path: String);
+procedure TkvDataset.DeleteFolderRecords(const APath: String);
 var
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
-  if Path = '' then
-    raise EkvObject.Create('Invalid key');
-  if not LocateRecord(Path, HashRecIdx, HashRec) then
-    raise EkvObject.CreateFmt('Key not found: %s', [Path]);
+  if APath = '' then
+    raise EkvDiskObject.Create('Invalid key');
+  if not LocateRecord(APath, HashRecIdx, HashRec) then
+    raise EkvDiskObject.CreateFmt('Key not found: %s', [APath]);
   Assert(HashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision]);
   if HashRec.ValueType <> hfrvtFolder then
-    raise EkvObject.CreateFmt('Not a folder: %s', [Path]);
+    raise EkvDiskObject.CreateFmt('Not a folder: %s', [APath]);
   Assert(HashRec.ValueFolderBaseIndex <> KV_HashFile_InvalidIndex);
-  InternalDeleteChildren(HashRec.ValueFolderBaseIndex);
+  try
+    InternalDeleteChildren(HashRec.ValueFolderBaseIndex);
+  finally
+    FHashFile.UpdateHeader;
+  end;
 end;
 
-function TkvDataset.SetNextIteratorRecord(var Iterator: TkvDatasetIterator): Boolean;
+function TkvDataset.ListOfKeys(const AKeyPath: String; const ARecurse: Boolean): TkvDictionaryValue;
+var
+  HashRecIdx : Word64;
+  HashRec : TkvHashFileRecord;
+begin
+  if (AKeyPath = '') or (AKeyPath = '/') then
+    Result := ListOfRootKeys(ARecurse)
+  else
+    begin
+      if not LocateRecord(AKeyPath, HashRecIdx, HashRec) then
+        raise EkvDiskObject.CreateFmt('Path not found: %s', [AKeyPath]);
+      if HashRec.ValueType <> hfrvtFolder then
+        raise EkvDiskObject.CreateFmt('Path does not specify a folder: %s', [AKeyPath]);
+      Result := ListOfFolderKeys(HashRec, ARecurse);
+    end;
+end;
+
+function TkvDataset.SetNextIteratorRecord(var AIterator: TkvDatasetIterator): Boolean;
 var
   E : PkvDatasetIteratorStackEntry;
   R : Boolean;
   RecIdx : Word64;
 begin
-  Assert(Iterator.StackLen > 0);
+  Assert(AIterator.FStackLen > 0);
 
-  E := @Iterator.Stack[Iterator.StackLen - 1];
+  E := @AIterator.FStack[AIterator.FStackLen - 1];
   repeat
 
     R := False;
     repeat
       if E^.SlotIdx = KV_HashFile_LevelSlotCount then
         begin
-          Dec(Iterator.StackLen);
-          SetLength(Iterator.Stack, Iterator.StackLen);
-          if Iterator.StackLen = 0 then
+          Dec(AIterator.FStackLen);
+          SetLength(AIterator.FStack, AIterator.FStackLen);
+          if AIterator.FStackLen = 0 then
             begin
               Result := False;
               exit;
             end;
-          E := @Iterator.Stack[Iterator.StackLen - 1];
+          E := @AIterator.FStack[AIterator.FStackLen - 1];
         end
       else
         R := True;
@@ -2355,21 +1944,21 @@ begin
     repeat
       Assert(Word32(E^.SlotIdx) < KV_HashFile_LevelSlotCount);
       RecIdx := E^.BaseRecIdx + Word32(E^.SlotIdx);
-      FHashFile.LoadRecord(RecIdx, Iterator.HashRec);
-      case Iterator.HashRec.RecordType of
+      FHashFile.LoadRecord(RecIdx, AIterator.FHashRec);
+      case AIterator.FHashRec.RecordType of
         hfrtKeyValue :
-          case Iterator.IteratorType of
+          case AIterator.FIteratorType of
             ditRecordsRecursive :
-              if Iterator.HashRec.ValueType = hfrvtFolder then
+              if AIterator.FHashRec.ValueType = hfrvtFolder then
                 begin
                   // Recurse down into folder slots
                   Inc(E^.SlotIdx);
-                  Inc(Iterator.StackLen);
-                  SetLength(Iterator.Stack, Iterator.StackLen);
-                  E := @Iterator.Stack[Iterator.StackLen - 1];
-                  E^.BaseRecIdx := Iterator.HashRec.ValueFolderBaseIndex;
+                  Inc(AIterator.FStackLen);
+                  SetLength(AIterator.FStack, AIterator.FStackLen);
+                  E := @AIterator.FStack[AIterator.FStackLen - 1];
+                  E^.BaseRecIdx := AIterator.FHashRec.ValueFolderBaseIndex;
                   E^.SlotIdx := 0;
-                  E^.FolderName := HashRecToKey(Iterator.HashRec);
+                  E^.FolderName := HashRecToKey(AIterator.FHashRec);
                 end
               else
                 begin
@@ -2378,7 +1967,7 @@ begin
                   exit;
                 end;
             ditFoldersNonRecursive :
-              if Iterator.HashRec.ValueType = hfrvtFolder then
+              if AIterator.FHashRec.ValueType = hfrvtFolder then
                 begin
                   // Found folder
                   Result := True;
@@ -2392,7 +1981,7 @@ begin
                     R := True;
                 end;
           else
-            raise EkvObject.Create('Invalid iterator type');
+            raise EkvDiskObject.Create('Invalid iterator type');
           end;
         hfrtEmpty :
           begin
@@ -2405,167 +1994,205 @@ begin
           begin
             // Recurse down into child slots
             Inc(E^.SlotIdx);
-            Inc(Iterator.StackLen);
-            SetLength(Iterator.Stack, Iterator.StackLen);
-            E := @Iterator.Stack[Iterator.StackLen - 1];
-            E^.BaseRecIdx := Iterator.HashRec.ChildSlotRecordIndex;
+            Inc(AIterator.FStackLen);
+            SetLength(AIterator.FStack, AIterator.FStackLen);
+            E := @AIterator.FStack[AIterator.FStackLen - 1];
+            E^.BaseRecIdx := AIterator.FHashRec.ChildSlotRecordIndex;
             E^.SlotIdx := 0;
           end;
         hfrtKeyValueWithHashCollision :
           begin
             // Recurse down and use current key/value entry
             Inc(E^.SlotIdx);
-            Inc(Iterator.StackLen);
-            SetLength(Iterator.Stack, Iterator.StackLen);
-            E := @Iterator.Stack[Iterator.StackLen - 1];
-            E^.BaseRecIdx := Iterator.HashRec.ChildSlotRecordIndex;
+            Inc(AIterator.FStackLen);
+            SetLength(AIterator.FStack, AIterator.FStackLen);
+            E := @AIterator.FStack[AIterator.FStackLen - 1];
+            E^.BaseRecIdx := AIterator.FHashRec.ChildSlotRecordIndex;
             E^.SlotIdx := -1;
             Result := True;
             exit;
           end;
       else
-        raise EkvObject.Create('Bad hash record type');
+        raise EkvDiskObject.Create('Bad hash record type');
       end;
     until R;
   until false;
 end;
 
-function TkvDataset.IterateFirst(const IteratorType: TkvDatasetIteratorType;
-         const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
+function TkvDataset.IterateFirst(const AIteratorType: TkvDatasetIteratorType;
+         const APath: String;
+         out AIterator: AkvDatasetIterator): Boolean;
 var
+  It : TkvDatasetIterator;
   E : PkvDatasetIteratorStackEntry;
   BaseRecIdx : Word64;
   HashRecIdx : Word64;
   HashRec : TkvHashFileRecord;
 begin
-  if Path = '' then
+  if APath = '' then
     BaseRecIdx := 0
   else
     begin
-      if not LocateRecord(Path, HashRecIdx, HashRec) then
-        raise EkvObject.CreateFmt('Path not found: %s', [Path]);
+      if not LocateRecord(APath, HashRecIdx, HashRec) then
+        raise EkvDiskObject.CreateFmt('Path not found: %s', [APath]);
       if HashRec.ValueType <> hfrvtFolder then
-        raise EkvObject.CreateFmt('Path not a folder: %s', [Path]);
+        raise EkvDiskObject.CreateFmt('Path not a folder: %s', [APath]);
       BaseRecIdx := HashRec.ValueFolderBaseIndex;
     end;
-  Iterator.IteratorType := IteratorType;
-  Iterator.Path := Path;
-  Iterator.Dataset := self;
-  Iterator.StackLen := 1;
-  SetLength(Iterator.Stack, 1);
-  E := @Iterator.Stack[0];
-  E^.BaseRecIdx := BaseRecIdx;
-  E^.SlotIdx := 0;
-  Result := SetNextIteratorRecord(Iterator);
+  It := TkvDatasetIterator.Create;
+  try
+    It.FIteratorType := AIteratorType;
+    It.FPath := APath;
+    It.FDataset := self;
+    It.FStackLen := 1;
+    It.FDatabaseName := FDatabaseName;
+    It.FDatasetName := FName;
+    SetLength(It.FStack, 1);
+    E := @It.FStack[0];
+    E^.BaseRecIdx := BaseRecIdx;
+    E^.SlotIdx := 0;
+    Result := SetNextIteratorRecord(It);
+  except
+    FreeAndNil(It);
+    raise;
+  end;
+  if not Result then
+    FreeAndNil(It);
+  AIterator := It;
 end;
 
-function TkvDataset.IterateRecords(const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
+function TkvDataset.IterateRecords(const APath: String;
+         out AIterator: AkvDatasetIterator): Boolean;
 begin
-  Result := IterateFirst(ditRecordsRecursive, Path, Iterator);
+  Result := IterateFirst(ditRecordsRecursive, APath, AIterator);
 end;
 
-function TkvDataset.IterateFolders(const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
+function TkvDataset.IterateFolders(const APath: String; out AIterator: AkvDatasetIterator): Boolean;
 begin
-  Result := IterateFirst(ditFoldersNonRecursive, Path, Iterator);
+  Result := IterateFirst(ditFoldersNonRecursive, APath, AIterator);
 end;
 
-function TkvDataset.IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
+function TkvDataset.IterateNextRecord(var AIterator: AkvDatasetIterator): Boolean;
 var
+  It : TkvDatasetIterator;
   StackLen : Integer;
   E : PkvDatasetIteratorStackEntry;
 begin
-  Assert(Iterator.Dataset = self);
+  It := AIterator as TkvDatasetIterator;
+  Assert(It.FDataset = self);
 
-  StackLen := Iterator.StackLen;
+  StackLen := It.FStackLen;
   if StackLen = 0 then
-    raise EkvObject.Create('Next past end');
-  E := @Iterator.Stack[StackLen - 1];
+    raise EkvDiskObject.Create('Next past end');
+  E := @It.FStack[StackLen - 1];
   Inc(E^.SlotIdx);
 
-  Result := SetNextIteratorRecord(Iterator);
+  Result := SetNextIteratorRecord(It);
 end;
 
-function TkvDataset.IteratorHasRecord(const Iterator: TkvDatasetIterator): Boolean;
-begin
-  Assert(Iterator.Dataset = self);
-  Result := Iterator.StackLen > 0;
-end;
-
-function TkvDataset.IteratorGetKey(const Iterator: TkvDatasetIterator): String;
+function TkvDataset.IteratorHasRecord(const AIterator: AkvDatasetIterator): Boolean;
 var
+  It : TkvDatasetIterator;
+begin
+  It := AIterator as TkvDatasetIterator;
+  Assert(It.FDataset = self);
+  Result := It.FStackLen > 0;
+end;
+
+function TkvDataset.IteratorGetKey(const AIterator: AkvDatasetIterator): String;
+var
+  It : TkvDatasetIterator;
   S, F : String;
   I : Integer;
 begin
-  Assert(Iterator.Dataset = self);
-  S := HashRecToKey(Iterator.HashRec);
-  for I := Iterator.StackLen - 1 downto 0 do
+  It := AIterator as TkvDatasetIterator;
+  Assert(It.FDataset = self);
+  S := HashRecToKey(It.FHashRec);
+  for I := It.FStackLen - 1 downto 0 do
     begin
-      F := Iterator.Stack[I].FolderName;
+      F := It.FStack[I].FolderName;
       if F <> '' then
         S := F + '/' + S;
     end;
-  F := Iterator.Path;
+  F := It.FPath;
   if F <> '' then
     S := F + '/' + S;
   Result := S;
 end;
 
-function TkvDataset.IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
+function TkvDataset.IteratorGetValue(const AIterator: AkvDatasetIterator): AkvValue;
+var
+  It : TkvDatasetIterator;
 begin
-  Assert(Iterator.Dataset = self);
-  Result := HashRecToValue(Iterator.HashRec);
+  It := AIterator as TkvDatasetIterator;
+  Assert(It.FDataset = self);
+  Result := HashRecToValue(It.FHashRec);
 end;
 
-function kvHashRecTimestamp(const HashRec: TkvHashFileRecord): Int64;
+function kvHashRecTimestamp(const HashRec: TkvHashFileRecord): UInt64;
 begin
   Result := HashRec.Timestamp;
 end;
 
-function TkvDataset.IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
+function TkvDataset.IteratorGetTimestamp(const AIterator: AkvDatasetIterator): UInt64;
+var
+  It : TkvDatasetIterator;
 begin
-  Assert(Iterator.Dataset = self);
-  Result := kvHashRecTimestamp(Iterator.HashRec);
+  It := AIterator as TkvDatasetIterator;
+  Assert(It.FDataset = self);
+  Result := kvHashRecTimestamp(It.FHashRec);
+end;
+
+
+
+{ TkvDatasetListIterator }
+
+function TkvDatasetListIterator.GetDatabase: AkvDatabase;
+begin
+  Result := FDatabase;
+end;
+
+function TkvDatasetListIterator.GetName: String;
+begin
+  Result := FKey;
+end;
+
+function TkvDatasetListIterator.GetDataset: AkvDataset;
+begin
+  Result := FDataset;
 end;
 
 
 
 { TkvDatasetList }
 
-constructor TkvDatasetList.Create(const Path, SystemName, DatabaseName: String);
+constructor TkvDatasetList.Create(const APath, ASystemName, ADatabaseName: String);
 begin
-  Assert(SystemName <> '');
-  Assert(DatabaseName <> '');
+  Assert(ASystemName <> '');
+  Assert(ADatabaseName <> '');
 
   inherited Create;
-  FPath := Path;
-  FSystemName := SystemName;
-  FDatabaseName := DatabaseName;
+  FPath := APath;
+  FSystemName := ASystemName;
+  FDatabaseName := ADatabaseName;
 
   FList := TkvStringHashList.Create(False, False, True);
-  FFile := TkvDatasetListFile.Create(Path, SystemName, DatabaseName);
+  FFile := TkvDatasetListFile.Create(APath, ASystemName, ADatabaseName);
 end;
 
 destructor TkvDatasetList.Destroy;
 begin
-  Finalise;
+  FreeAndNil(FFile);
+  FreeAndNil(FList);
   inherited Destroy;
 end;
 
 procedure TkvDatasetList.Finalise;
 begin
   if Assigned(FFile) then
-    begin
-      FFile.Finalise;
-      FreeAndNil(FFile);
-    end;
+    FFile.Finalise;
   if Assigned(FList) then
-    begin
-      FList.Finalise;
-      FreeAndNil(FList);
-    end;
+    FList.Finalise;
 end;
 
 procedure TkvDatasetList.ListClear;
@@ -2573,10 +2200,10 @@ begin
   FList.Clear;
 end;
 
-procedure TkvDatasetList.ListAppend(const Item: TkvDataset);
+procedure TkvDatasetList.ListAppend(const AItem: TkvDataset);
 begin
-  Assert(Assigned(Item));
-  FList.Add(Item.Name, Item);
+  Assert(Assigned(AItem));
+  FList.Add(AItem.Name, AItem);
 end;
 
 procedure TkvDatasetList.OpenNew;
@@ -2585,7 +2212,7 @@ begin
   FFile.OpenNew;
 end;
 
-procedure TkvDatasetList.Open;
+procedure TkvDatasetList.Open(const AHashFileCacheEntries: Word32);
 var
   RecIdx : Integer;
   Rec : TkvDatasetListFileRecord;
@@ -2605,7 +2232,7 @@ begin
               Rec.ValBlobRecordSize := KV_Dataset_ValBlob_DefaultRecordSize;
               FFile.SaveRecord(RecIdx, Rec);
             end;
-          Dataset := TkvDataset.Create(FPath, FSystemName, FDatabaseName, RecIdx, Rec);
+          Dataset := TkvDataset.Create(FPath, FSystemName, FDatabaseName, RecIdx, Rec, AHashFileCacheEntries);
           ListAppend(Dataset);
           Dataset.Open;
         end;
@@ -2614,23 +2241,31 @@ end;
 
 procedure TkvDatasetList.Close;
 var
-  It : TkvDatasetListIterator;
+  It : AkvDatasetListIterator;
 begin
   if IterateFirst(It) then
-    repeat
-      It.Dataset.Close;
-    until not IterateNext(It);
+    try
+      repeat
+        (It as TkvDatasetListIterator).FDataset.Close;
+      until not IterateNext(It);
+    finally
+      FreeAndNil(It);
+    end;
   FFile.Close;
 end;
 
 procedure TkvDatasetList.Delete;
 var
-  It : TkvDatasetListIterator;
+  It : AkvDatasetListIterator;
 begin
   if IterateFirst(It) then
-    repeat
-      It.Dataset.Delete;
-    until not IterateNext(It);
+    try
+      repeat
+        (It as TkvDatasetListIterator).FDataset.Delete;
+      until not IterateNext(It);
+    finally
+      FreeAndNil(It);
+    end;
   FFile.Delete;
 end;
 
@@ -2639,82 +2274,94 @@ begin
   Result := FList.Count;
 end;
 
-function TkvDatasetList.IterateFirst(var Iterator: TkvDatasetListIterator): Boolean;
+function TkvDatasetList.IterateFirst(var AIterator: AkvDatasetListIterator): Boolean;
 var
+  It : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
+  LIt : TkvDatasetListIterator;
+begin
+  Itm := FList.IterateFirst(It);
+  if not Assigned(Itm) then
+    begin
+      AIterator := nil;
+      Result := False;
+      exit;
+    end;
+  LIt := TkvDatasetListIterator.Create;
+  LIt.FIterator := It;
+  LIt.FItem := Itm;
+  LIt.FKey := LIt.FItem^.Key;
+  LIt.FDataset := TkvDataset(LIt.FItem.Value);
+  AIterator := LIt;
+  Result := True;
+end;
+
+function TkvDatasetList.IterateNext(var AIterator: AkvDatasetListIterator): Boolean;
+var
+  LIt : TkvDatasetListIterator;
   R : Boolean;
 begin
-  Iterator.Item := FList.IterateFirst(Iterator.Iterator);
-  R := Assigned(Iterator.Item);
+  LIt := AIterator as TkvDatasetListIterator;
+  LIt.FItem := FList.IterateNext(LIt.FIterator);
+  R := Assigned(LIt.FItem);
   if R then
     begin
-      Iterator.Key := Iterator.Item.Key;
-      Iterator.Dataset := TkvDataset(Iterator.Item.Value);
+      LIt.FKey := LIt.FItem.Key;
+      LIt.FDataset := TkvDataset(LIt.FItem.Value);
     end;
   Result := R;
 end;
 
-function TkvDatasetList.IterateNext(var Iterator: TkvDatasetListIterator): Boolean;
-var
-  R : Boolean;
+function TkvDatasetList.Exists(const AName: String): Boolean;
 begin
-  Iterator.Item := FList.IterateNext(Iterator.Iterator);
-  R := Assigned(Iterator.Item);
-  if R then
-    begin
-      Iterator.Key := Iterator.Item.Key;
-      Iterator.Dataset := TkvDataset(Iterator.Item.Value);
-    end;
-  Result := R;
+  Result := FList.KeyExists(AName);
 end;
 
-function TkvDatasetList.Exists(const Name: String): Boolean;
-begin
-  Result := FList.KeyExists(Name);
-end;
-
-function TkvDatasetList.Add(const Name: String;
-         const UseFolders: Boolean;
-         const KeyBlobRecordSize: Word32;
-         const ValBlobRecordSize: Word32): TkvDataset;
+function TkvDatasetList.Add(const AName: String;
+         const AUseFolders: Boolean;
+         const AKeyBlobRecordSize: Word32;
+         const AValBlobRecordSize: Word32;
+         const AHashFileCacheEntries: Word32): TkvDataset;
 var
   Rec : TkvDatasetListFileRecord;
   RecIdx : Word32;
   Dataset : TkvDataset;
 begin
-  kvInitDatasetListFileRecord(Rec, Name, UseFolders,
-      KeyBlobRecordSize, ValBlobRecordSize);
+  kvInitDatasetListFileRecord(Rec, AName, AUseFolders,
+      AKeyBlobRecordSize, AValBlobRecordSize);
   RecIdx := FFile.AppendRecord(Rec);
-  Dataset := TkvDataset.Create(FPath, FSystemName, FDatabaseName, RecIdx, Rec);
+  Dataset := TkvDataset.Create(FPath, FSystemName, FDatabaseName, RecIdx, Rec, AHashFileCacheEntries);
   ListAppend(Dataset);
   Result := Dataset;
 end;
 
-function TkvDatasetList.RequireItemByName(const Name: String): TkvDataset;
+function TkvDatasetList.RequireItemByName(const AName: String): TkvDataset;
 begin
-  Result := TkvDataset(FList.RequireValue(Name));
+  Result := TkvDataset(FList.RequireValue(AName));
 end;
 
-procedure TkvDatasetList.Remove(const Name: String);
+procedure TkvDatasetList.Remove(const AName: String);
 var
   DsO : TObject;
   Ds : TkvDataset;
 begin
   Assert(Assigned(FFile));
 
-  if not FList.GetValue(Name, DsO) then
-    raise EkvObject.CreateFmt('Dataset not found: %s', [Name]);
+  if not FList.GetValue(AName, DsO) then
+    raise EkvDiskObject.CreateFmt('Dataset not found: %s', [AName]);
   Ds := TkvDataset(DsO);
   Include(Ds.FDatasetListRec.Flags, dslfrfDeleted);
   FFile.SaveRecord(Ds.FDatasetListIdx, Ds.FDatasetListRec);
-  FList.DeleteKey(Name);
+  Ds.Finalise;
+  FList.DeleteKey(AName);
 end;
 
-procedure TkvDatasetList.SaveDataset(const Dataset: TkvDataset);
+procedure TkvDatasetList.SaveDataset(const ADataset: TkvDataset);
 begin
-  Assert(Assigned(Dataset));
+  Assert(Assigned(ADataset));
   Assert(Assigned(FFile));
 
-  FFile.SaveRecord(Dataset.FDatasetListIdx, Dataset.FDatasetListRec);
+  FFile.SaveRecord(ADataset.FDatasetListIdx, ADataset.FDatasetListRec);
 end;
 
 
@@ -2722,36 +2369,41 @@ end;
 { TkvDatabase }
 
 constructor TkvDatabase.Create(
-            const Path, SystemName: String;
-            const DatabaseListIdx: Word32;
-            const DatabaseListRec: TkvDatabaseListFileRecord);
+            const ASystem: TkvSystem;
+            const APath, ASystemName: String;
+            const ADatabaseListIdx: Word32;
+            const ADatabaseListRec: TkvDatabaseListFileRecord);
 begin
-  Assert(SystemName <> '');
+  Assert(ASystemName <> '');
 
   inherited Create;
 
-  FPath := Path;
-  FDatabaseListIdx := DatabaseListIdx;
-  FDatabaseListRec := DatabaseListRec;
+  FSystem := ASystem;
+  FPath := APath;
+  FDatabaseListIdx := ADatabaseListIdx;
+  FDatabaseListRec := ADatabaseListRec;
 
   kvNameFromBuf(FName, FDatabaseListRec.Name[0], FDatabaseListRec.NameLength);
 
-  FDatasetList := TkvDatasetList.Create(Path, SystemName, FName);
+  FDatasetList := TkvDatasetList.Create(APath, ASystemName, FName);
 end;
 
 destructor TkvDatabase.Destroy;
 begin
-  Finalise;
+  FreeAndNil(FDatasetList);
   inherited Destroy;
 end;
 
 procedure TkvDatabase.Finalise;
 begin
   if Assigned(FDatasetList) then
-    begin
-      FDatasetList.Finalise;
-      FreeAndNil(FDatasetList);
-    end;
+    FDatasetList.Finalise;
+  FSystem := nil;
+end;
+
+function TkvDatabase.GetName: String;
+begin
+  Result := FName;
 end;
 
 procedure TkvDatabase.OpenNew;
@@ -2759,7 +2411,7 @@ begin
   FDatasetList.OpenNew;
 end;
 
-procedure TkvDatabase.Open;
+procedure TkvDatabase.Open(const AHashFileCacheEntries: Word32);
 begin
   FDatasetList.Open;
 end;
@@ -2780,6 +2432,7 @@ var
 begin
   C := FDatabaseListRec.UniqueIdCounter + 1;
   FDatabaseListRec.UniqueIdCounter := C;
+  FSystem.FDatabaseList.SaveDatabase(self);
   Result := C;
 end;
 
@@ -2788,77 +2441,107 @@ begin
   Result := FDatasetList.GetCount;
 end;
 
-function TkvDatabase.IterateFirstDataset(var Iterator: TkvDatasetListIterator): Boolean;
+function TkvDatabase.IterateFirstDataset(var AIterator: AkvDatasetListIterator): Boolean;
 begin
-  Iterator.Database := self;
-  Result := FDatasetList.IterateFirst(Iterator);
+  Result := FDatasetList.IterateFirst(AIterator);
+  if Assigned(AIterator) then
+    (AIterator as TkvDatasetListIterator).FDatabase := self;
 end;
 
-function TkvDatabase.IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
+function TkvDatabase.IterateNextDataset(var AIterator: AkvDatasetListIterator): Boolean;
 begin
-  Result := FDatasetList.IterateNext(Iterator);
+  Result := FDatasetList.IterateNext(AIterator);
 end;
 
-function TkvDatabase.RequireDatasetByName(const Name: String): TkvDataset;
+function TkvDatabase.RequireDatasetByName(const AName: String): AkvDataset;
 begin
-  Result := FDatasetList.RequireItemByName(Name);
+  if AName = '' then
+    raise EkvDiskObject.Create('Dataset name required');
+
+  Result := FDatasetList.RequireItemByName(AName);
 end;
 
-function TkvDatabase.DatasetExists(const Name: String): Boolean;
+function TkvDatabase.DatasetExists(const AName: String): Boolean;
 begin
-  Result := FDatasetList.Exists(Name);
+  Result := FDatasetList.Exists(AName);
 end;
 
-function TkvDatabase.AddDataset(const Name: String;
-         const UseFolders: Boolean;
-         const KeyBlobRecordSize: Word32;
-         const ValBlobRecordSize: Word32): TkvDataset;
+function TkvDatabase.AddDiskDataset(const AName: String;
+         const AUseFolders: Boolean;
+         const AKeyBlobRecordSize: Word32;
+         const AValBlobRecordSize: Word32;
+         const AHashFileCacheEntries: Word32): TkvDataset;
 var
   Dataset : TkvDataSet;
 begin
-  Dataset := FDatasetList.Add(Name, UseFolders, KeyBlobRecordSize, ValBlobRecordSize);
+  Dataset := FDatasetList.Add(
+      AName, AUseFolders,
+      AKeyBlobRecordSize, AValBlobRecordSize,
+      AHashFileCacheEntries);
+  Dataset.OpenNew;
   Result := Dataset;
 end;
 
-procedure TkvDatabase.RemoveDataset(const Name: String);
+function TkvDatabase.AddDataset(const AName: String; const AUseFolders: Boolean): AkvDataset;
 begin
-  FDatasetList.Remove(Name);
+  Result := AddDiskDataset(AName, AUseFolders);
+end;
+
+procedure TkvDatabase.RemoveDataset(const AName: String);
+var
+  Dataset : TkvDataSet;
+begin
+  Dataset := FDatasetList.RequireItemByName(AName);
+  Dataset.Close;
+  Dataset.Delete;
+  FDatasetList.Remove(AName);
+end;
+
+
+
+{ TkvDatabaseListIterator }
+
+function TkvDatabaseListIterator.GetName: String;
+begin
+  Result := FKey;
+end;
+
+function TkvDatabaseListIterator.GetDatabase: AkvDatabase;
+begin
+  Result := FDatabase;
 end;
 
 
 
 { TkvDatabaseList }
 
-constructor TkvDatabaseList.Create(const Path, SystemName: String);
+constructor TkvDatabaseList.Create(const ASystem: TkvSystem; const APath, ASystemName: String);
 begin
-  Assert(SystemName <> '');
+  Assert(ASystemName <> '');
 
   inherited Create;
-  FPath := Path;
-  FSystemName := SystemName;
+  FSystem := ASystem;
+  FPath := APath;
+  FSystemName := ASystemName;
 
   FList := TkvStringHashList.Create(False, False, True);
-  FFile := TkvDatabaseListFile.Create(Path, SystemName);
+  FFile := TkvDatabaseListFile.Create(APath, ASystemName);
 end;
 
 destructor TkvDatabaseList.Destroy;
 begin
-  Finalise;
+  FreeAndNil(FFile);
+  FreeAndNil(FList);
   inherited Destroy;
 end;
 
 procedure TkvDatabaseList.Finalise;
 begin
   if Assigned(FFile) then
-    begin
-      FFile.Finalise;
-      FreeAndNil(FFile);
-    end;
+    FFile.Finalise;
   if Assigned(FList) then
-    begin
-      FList.Finalise;
-      FreeAndNil(FList);
-    end;
+    FList.Finalise;
+  FSystem := nil;
 end;
 
 procedure TkvDatabaseList.ListClear;
@@ -2866,10 +2549,10 @@ begin
   FList.Clear;
 end;
 
-procedure TkvDatabaseList.ListAppend(const Item: TkvDatabase);
+procedure TkvDatabaseList.ListAppend(const AItem: TkvDatabase);
 begin
-  Assert(Assigned(Item));
-  FList.Add(Item.Name, Item);
+  Assert(Assigned(AItem));
+  FList.Add(AItem.Name, AItem);
 end;
 
 procedure TkvDatabaseList.OpenNew;
@@ -2891,7 +2574,7 @@ begin
       FFile.LoadRecord(RecIdx, Rec);
       if not (dblfrfDeleted in Rec.Flags) then
         begin
-          Database := TkvDatabase.Create(FPath, FSystemName, RecIdx, Rec);
+          Database := TkvDatabase.Create(FSystem, FPath, FSystemName, RecIdx, Rec);
           ListAppend(Database);
           Database.Open;
         end;
@@ -2900,23 +2583,31 @@ end;
 
 procedure TkvDatabaseList.Close;
 var
-  It : TkvDatabaseListIterator;
+  It : AkvDatabaseListIterator;
 begin
   if IterateFirst(It) then
-    repeat
-      It.Database.Close;
-    until not IterateNext(It);
+    try
+      repeat
+        (It as TkvDatabaseListIterator).FDatabase.Close;
+      until not IterateNext(It);
+    finally
+      FreeAndNil(It);
+    end;
   FFile.Close;
 end;
 
 procedure TkvDatabaseList.Delete;
 var
-  It : TkvDatabaseListIterator;
+  It : AkvDatabaseListIterator;
 begin
   if IterateFirst(It) then
-    repeat
-      It.Database.Delete;
-    until not IterateNext(It);
+    try
+      repeat
+        (It as TkvDatabaseListIterator).FDatabase.Delete;
+      until not IterateNext(It);
+    finally
+      FreeAndNil(It);
+    end;
   FFile.Delete;
 end;
 
@@ -2925,142 +2616,148 @@ begin
   Result := FList.Count;
 end;
 
-function TkvDatabaseList.IterateFirst(var Iterator: TkvDatabaseListIterator): Boolean;
+function TkvDatabaseList.IterateFirst(var AIterator: AkvDatabaseListIterator): Boolean;
 var
+  It : TkvStringHashListIterator;
+  Itm : PkvStringHashListItem;
+  LIt : TkvDatabaseListIterator;
+begin
+  Itm := FList.IterateFirst(It);
+  if not Assigned(Itm) then
+    begin
+      AIterator := nil;
+      Result := False;
+      exit;
+    end;
+  LIt := TkvDatabaseListIterator.Create;
+  LIt.FIterator := It;
+  LIt.FItem := Itm;
+  LIt.FKey := LIt.FItem^.Key;
+  LIt.FDatabase := TkvDatabase(LIt.FItem.Value);
+  AIterator := LIt;
+  Result := True;
+end;
+
+function TkvDatabaseList.IterateNext(var AIterator: AkvDatabaseListIterator): Boolean;
+var
+  LIt : TkvDatabaseListIterator;
   R : Boolean;
 begin
-  Iterator.Item := FList.IterateFirst(Iterator.Iterator);
-  R := Assigned(Iterator.Item);
+  LIt := AIterator as TkvDatabaseListIterator;
+  LIt.FItem := FList.IterateNext(LIt.FIterator);
+  R := Assigned(LIt.FItem);
   if R then
     begin
-      Iterator.Key := Iterator.Item.Key;
-      Iterator.Database := TkvDatabase(Iterator.Item.Value);
+      LIt.FKey := LIt.FItem.Key;
+      LIt.FDatabase := TkvDatabase(LIt.FItem.Value);
     end;
   Result := R;
 end;
 
-function TkvDatabaseList.IterateNext(var Iterator: TkvDatabaseListIterator): Boolean;
-var
-  R : Boolean;
+function TkvDatabaseList.DatabaseExists(const AName: String): Boolean;
 begin
-  Iterator.Item := FList.IterateNext(Iterator.Iterator);
-  R := Assigned(Iterator.Item);
-  if R then
-    begin
-      Iterator.Key := Iterator.Item.Key;
-      Iterator.Database := TkvDatabase(Iterator.Item.Value);
-    end;
-  Result := R;
+  Result := FList.KeyExists(AName);
 end;
 
-function TkvDatabaseList.DatabaseExists(const Name: String): Boolean;
-begin
-  Result := FList.KeyExists(Name);
-end;
-
-function TkvDatabaseList.AddDatabase(const Name: String): TkvDatabase;
+function TkvDatabaseList.AddDatabase(const AName: String): TkvDatabase;
 var
   Rec : TkvDatabaseListFileRecord;
   RecIdx : Word32;
   Database : TkvDatabase;
 begin
-  Assert(Name <> '');
+  Assert(AName <> '');
 
-  kvInitDatabaseListFileRecord(Rec, Name);
+  kvInitDatabaseListFileRecord(Rec, AName);
   RecIdx := FFile.AppendRecord(Rec);
-  Database := TkvDatabase.Create(FPath, FSystemName, RecIdx, Rec);
+  Database := TkvDatabase.Create(FSystem, FPath, FSystemName, RecIdx, Rec);
   Database.OpenNew;
   ListAppend(Database);
   Result := Database;
 end;
 
-function TkvDatabaseList.GetDatabaseByName(const Name: String): TkvDatabase;
+function TkvDatabaseList.GetDatabaseByName(const AName: String): TkvDatabase;
 var
   V : TObject;
 begin
-  if not FList.GetValue(Name, V) then
+  if not FList.GetValue(AName, V) then
     Result := nil
   else
     Result := TkvDatabase(V);
 end;
 
-function TkvDatabaseList.RequireDatabaseByName(const Name: String): TkvDatabase;
+function TkvDatabaseList.RequireDatabaseByName(const AName: String): TkvDatabase;
 begin
-  Result := TkvDatabase(FList.RequireValue(Name));
+  Result := TkvDatabase(FList.RequireValue(AName));
 end;
 
-procedure TkvDatabaseList.SaveDatabase(const Database: TkvDatabase);
+procedure TkvDatabaseList.SaveDatabase(const ADatabase: TkvDatabase);
 begin
-  Assert(Assigned(Database));
+  Assert(Assigned(ADatabase));
   Assert(Assigned(FFile));
 
-  FFile.SaveRecord(Database.FDatabaseListIdx, Database.FDatabaseListRec);
+  FFile.SaveRecord(ADatabase.FDatabaseListIdx, ADatabase.FDatabaseListRec);
 end;
 
-procedure TkvDatabaseList.Remove(const Name: String);
+procedure TkvDatabaseList.Remove(const AName: String);
 var
   DbO : TObject;
   Db : TkvDatabase;
 begin
   Assert(Assigned(FFile));
 
-  if not FList.GetValue(Name, DbO) then
-    raise EkvObject.CreateFmt('Database not found: %s', [Name]);
+  if not FList.GetValue(AName, DbO) then
+    raise EkvDiskObject.CreateFmt('Database not found: %s', [AName]);
   Db := TkvDatabase(DbO);
   Include(Db.FDatabaseListRec.Flags, dblfrfDeleted);
   FFile.SaveRecord(Db.FDatabaseListIdx, Db.FDatabaseListRec);
-  FList.DeleteKey(Name);
+  Db.Finalise;
+  FList.DeleteKey(AName);
 end;
 
 
 
 { TkvSystem }
 
-constructor TkvSystem.Create(const Path, Name: String);
+constructor TkvSystem.Create(const APath, AName: String);
 begin
-  if Name = '' then
-    raise EkvObject.Create('System name required');
+  if AName = '' then
+    raise EkvDiskObject.Create('System name required');
 
   inherited Create;
 
-  FPath := Path;
-  FName := Name;
+  FPath := APath;
+  FName := AName;
 
   FOpen := False;
-  FSystemFile := TkvSystemFile.Create(Path, Name);
-  FDatabaseList := TkvDatabaseList.Create(Path, Name);
+  FSystemFile := TkvSystemFile.Create(APath, AName);
+  FDatabaseList := TkvDatabaseList.Create(self, APath, AName);
 end;
 
 destructor TkvSystem.Destroy;
 begin
-  Finalise;
+  FreeAndNil(FDatabaseList);
+  FreeAndNil(FSystemFile);
   inherited Destroy;
 end;
 
 procedure TkvSystem.Finalise;
 begin
   if Assigned(FDatabaseList) then
-    begin
-      FDatabaseList.Finalise;
-      FreeAndNil(FDatabaseList);
-    end;
+    FDatabaseList.Finalise;
   if Assigned(FSystemFile) then
-    begin
-      FSystemFile.Finalise;
-      FreeAndNil(FSystemFile);
-    end;
+    FSystemFile.Finalise;
 end;
 
 procedure TkvSystem.VerifyNotOpen;
 begin
   if FOpen then
-    raise EkvObject.Create('Operation not allowed while system is open');
+    raise EkvDiskObject.Create('Operation not allowed while system is open');
 end;
 
 procedure TkvSystem.VerifyOpen;
 begin
   if not FOpen then
-    raise EkvObject.Create('Operation not allowed while system is closed');
+    raise EkvDiskObject.Create('Operation not allowed while system is closed');
 end;
 
 function TkvSystem.Exists: Boolean;
@@ -3068,12 +2765,12 @@ begin
   Result := FSystemFile.Exists;
 end;
 
-procedure TkvSystem.OpenNew(const UserDataStr: String);
+procedure TkvSystem.OpenNew(const AUserDataStr: String);
 begin
   VerifyNotOpen;
   if FPath <> '' then
     ForceDirectories(FPath);
-  FSystemFile.OpenNew(UserDataStr);
+  FSystemFile.OpenNew(AUserDataStr);
   FDatabaseList.OpenNew;
   FOpen := True;
 end;
@@ -3107,16 +2804,51 @@ begin
   Result := FSystemFile.UserDataStr;
 end;
 
-procedure TkvSystem.SetUserDataStr(const A: String);
+procedure TkvSystem.SetUserDataStr(const AUserDataStr: String);
 begin
   VerifyOpen;
-  FSystemFile.UserDataStr := A;
+  FSystemFile.UserDataStr := AUserDataStr;
 end;
 
-function TkvSystem.AllocateSystemUniqueId: UInt64;
+function TkvSystem.AllocateUniqueId: UInt64;
 begin
   VerifyOpen;
   Result := FSystemFile.AllocateUniqueId;
+end;
+
+function TkvSystem.DatabaseExists(const AName: String): Boolean;
+begin
+  Result := FDatabaseList.DatabaseExists(AName);
+end;
+
+function TkvSystem.CreateDatabase(const AName: String): AkvDatabase;
+begin
+  VerifyOpen;
+  if AName = '' then
+    raise EkvDiskObject.Create('Database name required');
+
+  if DatabaseExists(AName) then
+    raise EkvDiskObject.CreateFmt('Database exists: %s', [AName]);
+
+  Result := FDatabaseList.AddDatabase(AName);
+end;
+
+function TkvSystem.RequireDatabaseByName(const AName: String): AkvDatabase;
+begin
+  VerifyOpen;
+  if AName = '' then
+    raise EkvDiskObject.Create('Database name required');
+  Result := FDatabaseList.RequireDatabaseByName(AName);
+end;
+
+procedure TkvSystem.DropDatabase(const AName: String);
+var
+  Db : TkvDatabase;
+begin
+  Db := RequireDatabaseByName(AName) as TkvDatabase;
+  Db.Close;
+  Db.Delete;
+  FDatabaseList.Remove(AName);
 end;
 
 function TkvSystem.GetDatabaseCount: Integer;
@@ -3124,334 +2856,53 @@ begin
   Result := FDatabaseList.GetCount;
 end;
 
-function TkvSystem.IterateFirstDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
+function TkvSystem.IterateFirstDatabase(var AIterator: AkvDatabaseListIterator): Boolean;
 begin
-  Result := FDatabaseList.IterateFirst(Iterator);
+  Result := FDatabaseList.IterateFirst(AIterator);
 end;
 
-function TkvSystem.IterateNextDatabase(var Iterator: TkvDatabaseListIterator): Boolean;
+function TkvSystem.IterateNextDatabase(var AIterator: AkvDatabaseListIterator): Boolean;
 begin
-  Result := FDatabaseList.IterateNext(Iterator);
+  Result := FDatabaseList.IterateNext(AIterator);
 end;
 
-function TkvSystem.DatabaseExists(const Name: String): Boolean;
-begin
-  Result := FDatabaseList.DatabaseExists(Name);
-end;
-
-function TkvSystem.CreateDatabase(const Name: String): TkvDatabase;
-begin
-  VerifyOpen;
-  if Name = '' then
-    raise EkvObject.Create('Database name required');
-
-  if DatabaseExists(Name) then
-    raise EkvObject.CreateFmt('Database exists: %s', [Name]);
-
-  Result := FDatabaseList.AddDatabase(Name);
-end;
-
-function TkvSystem.RequireDatabaseByName(const Name: String): TkvDatabase;
-begin
-  Result := FDatabaseList.RequireDatabaseByName(Name);
-end;
-
-procedure TkvSystem.DropDatabase(const Name: String);
-var
-  Db : TkvDatabase;
-begin
-  VerifyOpen;
-  if Name = '' then
-    raise EkvObject.Create('Database name required');
-
-  Db := RequireDatabaseByName(Name);
-  Db.Close;
-  Db.Delete;
-  FDatabaseList.Remove(Name);
-end;
-
-function TkvSystem.AllocateDatabaseUniqueId(const DatabaseName: String): UInt64;
-var
-  Db : TkvDatabase;
-begin
-  VerifyOpen;
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-
-  Db := RequireDatabaseByName(DatabaseName);
-  Result := Db.AllocateUniqueId;
-  FDatabaseList.SaveDatabase(Db);
-end;
-
-function TkvSystem.DatasetExists(const DatabaseName, DatasetName: String): Boolean;
-var
-  Db : TkvDatabase;
-begin
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-  if DatasetName = '' then
-    raise EkvObject.Create('Dataset name required');
-
-  Db := RequireDatabaseByName(DatabaseName);
-  Result := Db.DatasetExists(DatasetName);
-end;
-
-function TkvSystem.IterateFirstDataset(const DatabaseName: String;
-         var Iterator: TkvDatasetListIterator): Boolean;
-var
-  Db : TkvDatabase;
-begin
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-
-  Db := RequireDatabaseByName(DatabaseName);
-  Result := Db.IterateFirstDataset(Iterator);
-end;
-
-function TkvSystem.IterateNextDataset(var Iterator: TkvDatasetListIterator): Boolean;
-begin
-  Assert(Assigned(Iterator.Database));
-  Result := Iterator.Database.IterateNextDataset(Iterator);
-end;
-
-function TkvSystem.CreateDataset(const DatabaseName, DatasetName: String;
-         const UseFolders: Boolean;
-         const KeyBlobRecordSize: Word32;
-         const ValBlobRecordSize: Word32): TkvDataset;
+function TkvSystem.CreateDiskDataset(const ADatabaseName, ADatasetName: String;
+         const AUseFolders: Boolean;
+         const AKeyBlobRecordSize: Word32;
+         const AValBlobRecordSize: Word32;
+         const AHashFileCacheEntries: Word32): TkvDataset;
 var
   Db : TkvDatabase;
   Ds : TkvDataset;
 begin
-  VerifyOpen;
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-  if DatasetName = '' then
-    raise EkvObject.Create('Dataset name required');
+  if ADatasetName = '' then
+    raise EkvDiskObject.Create('Dataset name required');
 
-  Db := RequireDatabaseByName(DatabaseName);
-  if Db.DatasetExists(DatasetName) then
-    raise EkvObject.CreateFmt('Dataset exists: %s:%s', [DatabaseName, DatasetName]);
+  Db := RequireDatabaseByName(ADatabaseName) as TkvDatabase;
+  if Db.DatasetExists(ADatasetName) then
+    raise EkvDiskObject.CreateFmt('Dataset exists: %s:%s', [ADatabaseName, ADatasetName]);
 
-  Ds := Db.AddDataset(DatasetName, UseFolders, KeyBlobRecordSize, ValBlobRecordSize);
-  Ds.OpenNew;
+  Ds := Db.AddDiskDataset(
+      ADatasetName, AUseFolders,
+      AKeyBlobRecordSize, AValBlobRecordSize,
+      AHashFileCacheEntries);
   Result := Ds;
 end;
 
-function TkvSystem.RequireDatasetByName(const DatabaseName, DatasetName: String): TkvDataset;
-var
-  Db : TkvDatabase;
-begin
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-  if DatasetName = '' then
-    raise EkvObject.Create('Dataset name required');
-
-  Db := RequireDatabaseByName(DatabaseName);
-  Result := Db.RequireDatasetByName(DatasetName);
-end;
-
-procedure TkvSystem.DropDataset(const DatabaseName, DatasetName: String);
-var
-  Db : TkvDatabase;
-  Ds : TkvDataset;
-begin
-  VerifyOpen;
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-  if DatasetName = '' then
-    raise EkvObject.Create('Dataset name required');
-
-  Db := RequireDatabaseByName(DatabaseName);
-  Ds := Db.RequireDatasetByName(DatasetName);
-  Ds.Close;
-  Ds.Delete;
-  Db.RemoveDataset(DatasetName);
-end;
-
-function TkvSystem.AllocateDatasetUniqueId(const DatabaseName, DatasetName: String): UInt64;
-var
-  Db : TkvDatabase;
-  Ds : TkvDataset;
-begin
-  VerifyOpen;
-  if DatabaseName = '' then
-    raise EkvObject.Create('Database name required');
-  if DatasetName = '' then
-    raise EkvObject.Create('Dataset name required');
-
-  Db := RequireDatabaseByName(DatabaseName);
-  Ds := Db.RequireDatasetByName(DatasetName);
-  Result := Ds.AllocateUniqueId;
-end;
-
-procedure TkvSystem.AddRecord(const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue);
-begin
-  VerifyOpen;
-  RequireDatasetByName(DatabaseName, DatasetName).AddRecord(Key, Value);
-end;
-
-procedure TkvSystem.AddRecord(const Dataset: TkvDataset; const Key: String;
-          const Value: AkvValue);
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Dataset.AddRecord(Key, Value);
-end;
-
-procedure TkvSystem.MakePath(const DatabaseName, DatasetName, KeyPath: String);
-begin
-  VerifyOpen;
-  RequireDatasetByName(DatabaseName, DatasetName).MakePath(KeyPath);
-end;
-
-procedure TkvSystem.MakePath(const Dataset: TkvDataset; const KeyPath: String);
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Dataset.MakePath(KeyPath);
-end;
-
-function TkvSystem.RecordExists(const DatabaseName, DatasetName, Key: String): Boolean;
-begin
-  VerifyOpen;
-  Result := RequireDatasetByName(DatabaseName, DatasetName).RecordExists(Key);
-end;
-
-function TkvSystem.RecordExists(const Dataset: TkvDataset; const Key: String): Boolean;
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Result := Dataset.RecordExists(Key);
-end;
-
-function TkvSystem.GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue;
-begin
-  VerifyOpen;
-  Result := RequireDatasetByName(DatabaseName, DatasetName).GetRecord(Key);
-end;
-
-function TkvSystem.GetRecord(const Dataset: TkvDataset; const Key: String): AkvValue;
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Result := Dataset.GetRecord(Key);
-end;
-
-function TkvSystem.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-         const Recurse: Boolean): AkvValue;
-begin
-  VerifyOpen;
-  Result := RequireDatasetByName(DatabaseName, DatasetName).ListOfKeys(KeyPath, Recurse);
-end;
-
-procedure TkvSystem.SetRecord(const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue);
-begin
-  VerifyOpen;
-  RequireDatasetByName(DatabaseName, DatasetName).SetRecord(Key, Value);
-end;
-
-procedure TkvSystem.SetRecord(const Dataset: TkvDataset; const Key: String;
-          const Value: AkvValue);
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Dataset.SetRecord(Key, Value);
-end;
-
-procedure TkvSystem.AppendRecord(const DatabaseName, DatasetName, Key: String;
-          const Value: AkvValue);
-begin
-  VerifyOpen;
-  RequireDatasetByName(DatabaseName, DatasetName).AppendRecord(Key, Value);
-end;
-
-procedure TkvSystem.AppendRecord(const Dataset: TkvDataset; const Key: String;
-          const Value: AkvValue);
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Dataset.AppendRecord(Key, Value);
-end;
-
-procedure TkvSystem.DeleteRecord(const DatabaseName, DatasetName, Key: String);
-begin
-  VerifyOpen;
-  RequireDatasetByName(DatabaseName, DatasetName).DeleteRecord(Key);
-end;
-
-procedure TkvSystem.DeleteRecord(const Dataset: TkvDataset; const Key: String);
-begin
-  VerifyOpen;
-  Assert(Assigned(Dataset));
-  Dataset.DeleteRecord(Key);
-end;
-
-function TkvSystem.IterateRecords(const DatabaseName, DatasetName: String;
-         const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
-begin
-  VerifyOpen;
-  Result := RequireDatasetByName(DatabaseName, DatasetName)
-      .IterateRecords(Path, Iterator);
-  Iterator.DatabaseName := DatabaseName;
-  Iterator.DatasetName := DatasetName;
-end;
-
-function TkvSystem.IterateFolders(const DatabaseName, DatasetName: String;
-         const Path: String;
-         out Iterator: TkvDatasetIterator): Boolean;
-begin
-  VerifyOpen;
-  Result := RequireDatasetByName(DatabaseName, DatasetName)
-      .IterateFolders(Path, Iterator);
-  Iterator.DatabaseName := DatabaseName;
-  Iterator.DatasetName := DatasetName;
-end;
-
-function TkvSystem.IterateNextRecord(var Iterator: TkvDatasetIterator): Boolean;
-begin
-  VerifyOpen;
-  Result := RequireDatasetByName(Iterator.DatabaseName, Iterator.DatasetName)
-      .IterateNextRecord(Iterator);
-end;
-
-function TkvSystem.IteratorGetKey(const Iterator: TkvDatasetIterator): String;
-begin
-  VerifyOpen;
-  Assert(Assigned(Iterator.Dataset));
-  Result := Iterator.Dataset.IteratorGetKey(Iterator);
-end;
-
-function TkvSystem.IteratorGetValue(const Iterator: TkvDatasetIterator): AkvValue;
-begin
-  VerifyOpen;
-  Assert(Assigned(Iterator.Dataset));
-  Result := Iterator.Dataset.IteratorGetValue(Iterator);
-end;
-
-function TkvSystem.IteratorGetTimestamp(const Iterator: TkvDatasetIterator): Int64;
-begin
-  VerifyOpen;
-  Assert(Assigned(Iterator.Dataset));
-  Result := Iterator.Dataset.IteratorGetTimestamp(Iterator);
-end;
-
-function TkvSystem.Backup(const BackupPath: String): TkvSystem;
+function TkvSystem.Backup(const ABackupPath: String): TkvSystem;
 var
   BakSys : TkvSystem;
   SysHdr : PkvSystemFileHeader;
   BakSysHdr : PkvSystemFileHeader;
-  DbIt : TkvDatabaseListIterator;
+  DbIt : AkvDatabaseListIterator;
   Db : TkvDatabase;
   BakDb : TkvDatabase;
-  DsIt : TkvDatasetListIterator;
+  DsIt : AkvDatasetListIterator;
   Ds : TkvDataset;
   BakDs : TkvDataset;
 begin
   VerifyOpen;
-  BakSys := TkvSystem.Create(BackupPath, FName);
+  BakSys := TkvSystem.Create(ABackupPath, FName);
   try
     BakSys.OpenNew(GetUserDataStr);
     SysHdr := FSystemFile.GetHeader;
@@ -3459,23 +2910,27 @@ begin
     BakSysHdr^.UniqueIdCounter := SysHdr^.UniqueIdCounter;
     BakSys.FSystemFile.HeaderModified;
     if FDatabaseList.IterateFirst(DbIt) then
-      repeat
-        Db := DbIt.Database;
-        BakDb := BakSys.CreateDatabase(Db.Name);
-        BakDb.FDatabaseListRec.UniqueIdCounter := Db.FDatabaseListRec.UniqueIdCounter;
-        BakSys.FDatabaseList.SaveDatabase(BakDb);
-        if Db.IterateFirstDataset(DsIt) then
-          repeat
-            Ds := DsIt.Dataset;
-            BakDs := BakSys.CreateDataset(
-                BakDb.Name,
-                Ds.Name,
-                Ds.UseFolders,
-                Ds.KeyBlobRecordSize,
-                Ds.ValBlobRecordSize);
-            Ds.BackupTo(BakDs);
-          until not Db.IterateNextDataset(DsIt);
-      until not FDatabaseList.IterateNext(DbIt);
+      try
+        repeat
+          Db := DbIt.GetDatabase as TkvDatabase;
+          BakDb := BakSys.CreateDatabase(Db.Name) as TkvDatabase;
+          BakDb.FDatabaseListRec.UniqueIdCounter := Db.FDatabaseListRec.UniqueIdCounter;
+          BakSys.FDatabaseList.SaveDatabase(BakDb);
+          if Db.IterateFirstDataset(DsIt) then
+            repeat
+              Ds := (DsIt as TkvDatasetListIterator).FDataset;
+              BakDs := BakSys.CreateDiskDataset(
+                  BakDb.Name,
+                  Ds.Name,
+                  Ds.UseFolders,
+                  Ds.KeyBlobRecordSize,
+                  Ds.ValBlobRecordSize);
+              Ds.BackupTo(BakDs);
+            until not Db.IterateNextDataset(DsIt);
+        until not FDatabaseList.IterateNext(DbIt);
+      finally
+        FreeAndNil(DbIt);
+      end;
   except
     BakSys.Finalise;
     FreeAndNil(BakSys);

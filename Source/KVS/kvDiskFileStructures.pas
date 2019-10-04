@@ -15,10 +15,12 @@
 { 2018/04/11  0.08  Change hash record and blob record to handle 64 bit indexes }
 {                   (breaks compatibility) and reserve for 64 bit size }
 { 2019/04/19  0.09  Add blob record sizes in dataset record }
+{ 2019/09/30  0.10  Rename to kvDiskFileStructures }
+{ 2019/10/04  0.11  Hash file header tracks auto-increment Timestamp }
 
 {$INCLUDE kvInclude.inc}
 
-unit kvStructures;
+unit kvDiskFileStructures;
 
 interface
 
@@ -68,7 +70,7 @@ type
   PkvSystemFileHeader = ^TkvSystemFileHeader;
 
 const
-  KV_SystemFile_HeaderSize = SizeOf(TkvSystemFileHeader);
+  KV_SystemFile_HeaderSize    = SizeOf(TkvSystemFileHeader); // 1024 bytes
   KV_SystemFile_MinHeaderSize = KV_SystemFile_HeaderSize;
 
 procedure kvInitSystemFileHeader(
@@ -145,7 +147,7 @@ type
   end;
 
 const
-  KV_DatabaseListFile_RecordSize = SizeOf(TkvDatabaseListFileRecord);
+  KV_DatabaseListFile_RecordSize = SizeOf(TkvDatabaseListFileRecord); // 1024 bytes
 
 procedure kvInitDatabaseListFileRecord(
           out Rec: TkvDatabaseListFileRecord;
@@ -186,7 +188,7 @@ type
   PkvDatasetListFileHeader = ^TkvDatasetListFileHeader;
 
 const
-  KV_DatasetListFile_HeaderSize = SizeOf(TkvDatasetListFileHeader);
+  KV_DatasetListFile_HeaderSize = SizeOf(TkvDatasetListFileHeader); // 1024 bytes
 
 procedure kvInitDatasetListFileHeader(
           out Header: TkvDatasetListFileHeader);
@@ -218,7 +220,7 @@ type
   end;
 
 const
-  KV_DatasetListFile_RecordSize = SizeOf(TkvDatasetListFileRecord); // 1024
+  KV_DatasetListFile_RecordSize = SizeOf(TkvDatasetListFileRecord); // 1024 bytes
 
 procedure kvInitDatasetListFileRecord(
           var Rec: TkvDatasetListFileRecord;
@@ -251,7 +253,7 @@ procedure kvInitDatasetListFileRecord(
 {   | Pointer to next level 32 x Record    |                                   }
 {   +--------------------------------------+                                   }
 {                                                                              }
-{ 32 Slot records example:                                                     }
+{ Slot records example:                                                        }
 {                                                                              }
 {   +-------------+                                                            }
 {   | Key/Value   |                                                            }
@@ -290,12 +292,13 @@ type
     UniqueIdCounter   : UInt64;
     RecordCount       : Word64;
     FirstDeletedIndex : Word64;        // Linked list of deleted records
-    Reserved          : array[0..983] of Byte;
+    TimestampCounter  : UInt64;
+    Reserved          : array[0..975] of Byte;
   end;
   PkvHashFileHeader = ^TkvHashFileHeader;
 
 const
-  KV_HashFile_HeaderSize = SizeOf(TkvHashFileHeader);
+  KV_HashFile_HeaderSize = SizeOf(TkvHashFileHeader); // 1024 bytes
 
 procedure kvInitHashFileHeader(
           out Header: TkvHashFileHeader);
@@ -329,7 +332,7 @@ type
     Magic                 : Word16;                 // KV_HashFileRecord_Magic
     Version               : Byte;                   // KV_HashFileRecord_Version
     RecordType            : TkvHashFileRecordType;
-    Timestamp             : Int64;                  // Timestamp of last change for Key/Value record types
+    Timestamp             : UInt64;                 // Timestamp of last change for Key/Value record types
     ChildSlotRecordIndex  : Word64;                 // Used by ParentSlot and HashCollision
     KeyHash               : UInt64;                 // kvLevelHash of Key
     KeyLength             : Word16;
@@ -396,7 +399,7 @@ type
   PkvBlobFileHeader = ^TkvBlobFileHeader;
 
 const
-  KV_BlobFile_HeaderSize = SizeOf(TkvBlobFileHeader);
+  KV_BlobFile_HeaderSize = SizeOf(TkvBlobFileHeader); // 1024 bytes
 
 function  kvIsBlobFileRecordSizeValid(const RecordSize: Word32): Boolean;
 procedure kvValidateBlobFileRecordSize(const RecordSize: Word32);

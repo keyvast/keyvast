@@ -4,10 +4,11 @@
 
 { 2018/02/09  0.01  Initial version, 64 bit hash }
 { 2018/03/02  0.02  Fix Level1HashString for case insensitve keys }
+{ 2019/09/30  0.03  Rename to kvDiskHash }
 
 {$INCLUDE kvInclude.inc}
 
-unit kvHash;
+unit kvDiskHash;
 
 interface
 

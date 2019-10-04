@@ -14,10 +14,13 @@
 { 2018/04/11  0.09  Hash file 64-bit indexes }
 { 2019/04/19  0.10  Initialise header before CreateFile in OpenNew }
 { 2019/09/11  0.11  WriteChain/TruncateChainAt add records to free list when unused }
+{ 2019/09/30  0.12  Rename to kvDiskFiles }
+{ 2019/10/04  0.13  Increase Hash file default cache entries }
+{ 2019/10/04  0.14  Hash file Timestamp functions }
 
 {$INCLUDE kvInclude.inc}
 
-unit kvFiles;
+unit kvDiskFiles;
 
 interface
 
@@ -27,7 +30,8 @@ uses
   {$ENDIF}
   SysUtils,
   Classes,
-  kvStructures;
+
+  kvDiskFileStructures;
 
 
 
@@ -40,8 +44,12 @@ type
 
 type
   AkvFile = class
+  private
+    FFile : TFileStream;
+
   protected
     procedure LogWarning(const Txt: String);
+
   public
     destructor Destroy; override;
     procedure Finalise; virtual;
@@ -59,7 +67,6 @@ type
 
     FFileName   : String;
     FFileHeader : TkvSystemFileHeader;
-    FFile       : TFileStream;
 
     procedure CreateFile;
     procedure OpenFile;
@@ -73,7 +80,6 @@ type
 
   public
     constructor Create(const Path, SystemName: String);
-    procedure Finalise; override;
 
     property  FileName: String read FFileName;
 
@@ -102,7 +108,6 @@ type
 
     FFileName   : String;
     FFileHeader : TkvDatabaseListFileHeader;
-    FFile       : TFileStream;
 
     procedure CreateFile;
     procedure OpenFile;
@@ -114,7 +119,6 @@ type
 
   public
     constructor Create(const Path, SystemName: String);
-    procedure Finalise; override;
 
     procedure OpenNew;
     procedure Open;
@@ -143,7 +147,6 @@ type
 
     FFileName   : String;
     FFileHeader : TkvDatasetListFileHeader;
-    FFile       : TFileStream;
 
     procedure CreateFile;
     procedure OpenFile;
@@ -155,7 +158,6 @@ type
 
   public
     constructor Create(const Path, SystemName, DatabaseName: String);
-    procedure Finalise; override;
 
     procedure OpenNew;
     procedure Open;
@@ -176,9 +178,11 @@ type
 { TkvHashFile }
 
 const
-  KV_HashFile_DefaultCacheEntries = KV_HashFile_LevelSlotCount * KV_HashFile_LevelSlotCount;
   KV_HashFile_MinCacheEntries     = 0;
   KV_HashFile_MaxCacheEntries     = 262144;
+  KV_HashFile_DefaultCacheEntries = KV_HashFile_LevelSlotCount *
+                                    KV_HashFile_LevelSlotCount *
+                                    KV_HashFile_LevelSlotCount; // 3 levels, 32768 entries, 4 MB
 
 type
   TkvHashFile = class(AkvFile)
@@ -188,12 +192,12 @@ type
     FDatabaseName : String;
     FDatasetName  : String;
 
-    FFileName     : String;
-    FFileHeader   : TkvHashFileHeader;
-    FFile         : TFileStream;
-    FCacheEntries : Integer;
-    FCacheRec     : array of TkvHashFileRecord;
-    FCacheValid   : array of Boolean;
+    FFileName       : String;
+    FFileHeader     : TkvHashFileHeader;
+    FHeaderModified : Boolean;
+    FCacheEntries   : Word32;
+    FCacheRec       : array of TkvHashFileRecord;
+    FCacheValid     : array of Boolean;
 
     procedure CreateFile;
     procedure OpenFile;
@@ -204,9 +208,9 @@ type
     procedure SeekRecord(const Idx: Word64);
 
   public
-    constructor Create(const Path, SystemName, DatabaseName, DatasetName: String;
-                const CacheEntries: Integer = KV_HashFile_DefaultCacheEntries);
-    procedure Finalise; override;
+    constructor Create(
+                const Path, SystemName, DatabaseName, DatasetName: String;
+                const CacheEntries: Word32 = KV_HashFile_DefaultCacheEntries);
 
     procedure OpenNew;
     procedure Open;
@@ -215,7 +219,11 @@ type
 
     function  GetHeader: PkvHashFileHeader;
     procedure HeaderModified;
+    procedure UpdateHeader;
+
     function  AllocateUniqueId: UInt64;
+    function  GetNextTimestamp: UInt64;
+    procedure UpdateTimestamp(const Timestamp: UInt64);
 
     function  GetRecordCount: Integer;
     procedure LoadRecord(const Idx: Word64; var Rec: TkvHashFileRecord);
@@ -241,7 +249,6 @@ type
 
     FFileName   : String;
     FFileHeader : TkvBlobFileHeader;
-    FFile       : TFileStream;
 
     procedure CreateFile;
     procedure OpenFile;
@@ -256,7 +263,6 @@ type
 
   public
     constructor Create(const Path, SystemName, DatabaseName, DatasetName, BlobName: String);
-    procedure Finalise; override;
 
     procedure OpenNew(const RecordSize: Integer);
     procedure Open;
@@ -311,7 +317,7 @@ end;
 
 destructor AkvFile.Destroy;
 begin
-  Finalise;
+  FreeAndNil(FFile);
   inherited Destroy;
 end;
 
@@ -338,12 +344,6 @@ begin
 
   PathEnsureSuffix(FPath);
   FFileName := FPath + FSystemName + '.kvsys';
-end;
-
-procedure TkvSystemFile.Finalise;
-begin
-  FreeAndNil(FFile);
-  inherited Finalise;
 end;
 
 function TkvSystemFile.Exists: Boolean;
@@ -471,12 +471,6 @@ begin
 
   PathEnsureSuffix(FPath);
   FFileName := FPath + FSystemName + '.kvdbl';
-end;
-
-procedure TkvDatabaseListFile.Finalise;
-begin
-  FreeAndNil(FFile);
-  inherited Finalise;
 end;
 
 procedure TkvDatabaseListFile.OpenNew;
@@ -634,12 +628,6 @@ begin
   FFileName := FPath + FSystemName + '.' + FDatabaseName + '.kvdsl';
 end;
 
-procedure TkvDatasetListFile.Finalise;
-begin
-  FreeAndNil(FFile);
-  inherited Finalise;
-end;
-
 procedure TkvDatasetListFile.OpenNew;
 begin
   InitHeader;
@@ -780,7 +768,7 @@ end;
 { TkvHashFile }
 
 constructor TkvHashFile.Create(const Path, SystemName, DatabaseName, DatasetName: String;
-            const CacheEntries: Integer);
+            const CacheEntries: Word32);
 var
   I : Integer;
 begin
@@ -790,17 +778,17 @@ begin
     raise EkvFile.Create('Database name required');
   if DatasetName = '' then
     raise EkvFile.Create('Dataset name required');
-  if (CacheEntries < KV_HashFile_MinCacheEntries) or
-     (CacheEntries > KV_HashFile_MaxCacheEntries) then
+  if CacheEntries > KV_HashFile_MaxCacheEntries then
     raise EkvFile.Create('Invalid cache entries value');
 
   inherited Create;
+
   FPath := Path;
   FSystemName := SystemName;
   FDatabaseName := DatabaseName;
   FDatasetName := DatasetName;
-  FCacheEntries := CacheEntries;
 
+  FCacheEntries := CacheEntries;
   SetLength(FCacheRec, FCacheEntries);
   SetLength(FCacheValid, FCacheEntries);
   for I := 0 to FCacheEntries - 1 do
@@ -810,24 +798,20 @@ begin
   FFileName := FPath + FSystemName + '.' + FDatabaseName + '.' + FDatasetName + '.kvh';
 end;
 
-procedure TkvHashFile.Finalise;
-begin
-  FreeAndNil(FFile);
-  inherited Finalise;
-end;
-
 procedure TkvHashFile.OpenNew;
 begin
   InitHeader;
   CreateFile;
   AllocateSlotRecords;
   SaveHeader;
+  FHeaderModified := False;
 end;
 
 procedure TkvHashFile.Open;
 begin
   OpenFile;
   LoadHeader;
+  FHeaderModified := False;
 end;
 
 procedure TkvHashFile.Close;
@@ -902,7 +886,16 @@ end;
 
 procedure TkvHashFile.HeaderModified;
 begin
-  SaveHeader;
+  FHeaderModified := True;
+end;
+
+procedure TkvHashFile.UpdateHeader;
+begin
+  if FHeaderModified then
+    begin
+      SaveHeader;
+      FHeaderModified := False;
+    end;
 end;
 
 function TkvHashFile.AllocateUniqueId: UInt64;
@@ -911,8 +904,19 @@ var
 begin
   C := FFileHeader.UniqueIdCounter + 1;
   FFileHeader.UniqueIdCounter := C;
-  SaveHeader;
+  HeaderModified;
   Result := C;
+end;
+
+function TkvHashFile.GetNextTimestamp: UInt64;
+begin
+  Result := FFileHeader.TimestampCounter + 1;
+end;
+
+procedure TkvHashFile.UpdateTimestamp(const Timestamp: UInt64);
+begin
+  FFileHeader.TimestampCounter := Timestamp;
+  HeaderModified;
 end;
 
 function TkvHashFile.GetRecordCount: Integer;
@@ -999,19 +1003,25 @@ begin
   if RecIdx <> KV_HashFile_InvalidIndex then
     begin
       LoadRecord(RecIdx, Rec);
-      FFileHeader.FirstDeletedIndex := Rec.ChildSlotRecordIndex;
       for I := 0 to LvlSlots - 1 do
         SaveRecord(RecIdx + Word32(I), EmpRec);
-      SaveHeader;
+      FFileHeader.FirstDeletedIndex := Rec.ChildSlotRecordIndex;
+      HeaderModified;
       Result := RecIdx;
       exit;
     end;
 
   RecCnt := FFileHeader.RecordCount;
   FFileHeader.RecordCount := RecCnt + LvlSlots;
-  for I := 0 to LvlSlots - 1 do
-    SaveRecord(RecCnt + Word32(I), EmpRec);
-  SaveHeader;
+  try
+    for I := 0 to LvlSlots - 1 do
+      SaveRecord(RecCnt + Word32(I), EmpRec);
+  except
+    FFileHeader.RecordCount := RecCnt;
+    raise;
+  end;
+
+  HeaderModified;
   Result := RecCnt;
 end;
 
@@ -1020,12 +1030,14 @@ var
   HashRec : TkvHashFileRecord;
 begin
   Assert(BaseIdx <> KV_HashFile_InvalidIndex);
+
   kvInitHashFileRecord(HashRec);
   HashRec.RecordType := hfrtDeleted;
   HashRec.ChildSlotRecordIndex := FFileHeader.FirstDeletedIndex;
   SaveRecord(BaseIdx, HashRec);
+
   FFileHeader.FirstDeletedIndex := BaseIdx;
-  SaveHeader;
+  HeaderModified;
 end;
 
 
@@ -1052,12 +1064,6 @@ begin
 
   PathEnsureSuffix(FPath);
   FFileName := FPath + FSystemName + '.' + FDatabaseName + '.' + FDatasetName + '.' + FBlobName + '.kvbl';
-end;
-
-procedure TkvBlobFile.Finalise;
-begin
-  FreeAndNil(FFile);
-  inherited Finalise;
 end;
 
 procedure TkvBlobFile.OpenNew(const RecordSize: Integer);
