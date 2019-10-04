@@ -24,5 +24,5 @@ License
 
 KeyVast is released under the terms of the MIT license.
 
-Copyright (c) 2018 KeyVast, David J Butler
+Copyright (c) 2018-2019 KeyVast, David J Butler
 
