@@ -21,20 +21,22 @@ uses
   {$ENDIF }
   System.SysUtils,
   SyncObjs,
-  kvlaApplication in 'kvlaApplication.pas',
-  kvHashList in '..\KVS\kvHashList.pas',
-  kvHash in '..\KVS\kvHash.pas',
+  flcInteger in '..\Fundamentals\flcInteger.pas',
+  flcDecimal in '..\Fundamentals\flcDecimal.pas',
   kvValues in '..\KVS\kvValues.pas',
-  kvStructures in '..\KVS\kvStructures.pas',
-  kvFiles in '..\KVS\kvFiles.pas',
-  kvObjects in '..\KVS\kvObjects.pas',
+  kvHashList in '..\KVS\kvHashList.pas',
+  kvAbstractSystem in '..\KVS\kvAbstractSystem.pas',
+  kvBaseSystem in '..\KVS\kvBaseSystem.pas',
+  kvDiskHash in '..\KVS\kvDiskHash.pas',
+  kvDiskFileStructures in '..\KVS\kvDiskFileStructures.pas',
+  kvDiskFiles in '..\KVS\kvDiskFiles.pas',
+  kvDiskSystem in '..\KVS\kvDiskSystem.pas',
   kvScriptContext in '..\KVS\kvScriptContext.pas',
+  kvScriptFunctions in '..\KVS\kvScriptFunctions.pas',
   kvScriptNodes in '..\KVS\kvScriptNodes.pas',
   kvScriptParser in '..\KVS\kvScriptParser.pas',
   kvScriptSystem in '..\KVS\kvScriptSystem.pas',
-  kvScriptFunctions in '..\KVS\kvScriptFunctions.pas',
-  flcDecimal in '..\Fundamentals\flcDecimal.pas',
-  flcInteger in '..\Fundamentals\flcInteger.pas';
+  kvlaApplication in 'kvlaApplication.pas';
 
 type
   EAppError = class(Exception);

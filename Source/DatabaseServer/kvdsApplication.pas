@@ -11,7 +11,7 @@ interface
 uses
   SysUtils,
   SyncObjs,
-  kvObjects,
+  kvDiskSystem,
   kvScriptParser,
   kvScriptSystem,
   kvDatasysServer,
@@ -172,9 +172,15 @@ begin
     FSys := TkvSystem.Create(FSysPath, FSysName);
     FMSys := TkvScriptSystem.Create(FSys);
     if FSys.Exists then
-      FMSys.Open
+      begin
+        FSys.Open;
+        FMSys.Open;
+      end
     else
-      FMSys.OpenNew;
+      begin
+        FSys.OpenNew;
+        FMSys.OpenNew;
+      end;
 
     FDatasysServer.TcpPort := FTcpPort;
     FDatasysServer.Start(FMSys);
@@ -193,6 +199,7 @@ begin
   Log('#', 'Stopping');
   FDatasysServer.Stop;
   FMSys.Close;
+  FSys.Close;
   FreeAndNil(FMSys);
   FreeAndNil(FSys);
   Log('#', 'Stopped');

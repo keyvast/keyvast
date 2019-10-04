@@ -11,7 +11,7 @@ interface
 uses
   SysUtils,
   kvValues,
-  kvObjects,
+  kvDiskSystem,
   kvScriptNodes,
   kvScriptParser,
   kvScriptSystem;
@@ -89,6 +89,7 @@ begin
   Print('Creating system...');
   Print(Path + ' ' + Name);
   FSys := TkvSystem.Create(Path, Name);
+  FSys.OpenNew;
   FMSys := TkvScriptSystem.Create(FSys);
   FMSys.OpenNew;
   FSession := FMSys.AddSession;
@@ -101,9 +102,12 @@ begin
   Print('Deleting system...');
   Print(Path + ' ' + Name);
   FSys := TkvSystem.Create(Path, Name);
+  FSys.Open;
   FMSys := TkvScriptSystem.Create(FSys);
   FMSys.Open;
+  FSys.Close;
   FMSys.Close;
+  FSys.Delete;
   FMSys.Delete;
   Print('System deleted');
 end;
@@ -113,6 +117,7 @@ begin
   Print('Opening system...');
   Print(Path + ' ' + Name);
   FSys := TkvSystem.Create(Path, Name);
+  FSys.Open;
   FMSys := TkvScriptSystem.Create(FSys);
   FMSys.Open;
   FSession := FMSys.AddSession;
@@ -125,6 +130,7 @@ begin
   Print('Closing system...');
   if Assigned(FSession) then
     FSession.Close;
+  FSys.Close;
   FMSys.Close;
   Print('System closed');
 end;
