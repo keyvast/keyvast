@@ -2,6 +2,9 @@
 { Copyright (c) 2018-2019 KeyVast, David J Butler }
 { KeyVast is released under the terms of the MIT license. }
 
+{ 2018/02/07  0.01  Initial tests for hash list and disk system. }
+{ 2019/10/04  0.02  MemSystem dataset tests. }
+
 {$INCLUDE kvInclude.inc}
 
 unit kvTest;
@@ -15,6 +18,7 @@ implementation
 {$IFDEF DEBUG}
 {$IFDEF TEST}
 {.DEFINE Profile}
+{.DEFINE TestMemSystem}
 {$ASSERTIONS ON}
 {$ENDIF}
 {$ENDIF}
@@ -31,10 +35,15 @@ uses
   IOUtils,
   SysUtils,
   kvHashList,
-  kvHash,
-  kvStructures,
+  kvDiskHash,
+  kvDiskFileStructures,
   kvValues,
-  kvObjects,
+  kvAbstractSystem,
+  kvBaseSystem,
+  kvDiskSystem,
+  {$IFDEF TestMemSystem}
+  kvMemSystem,
+  {$ENDIF}
   kvScriptNodes,
   kvScriptParser,
   kvScriptSystem,
@@ -52,7 +61,7 @@ begin
   {$ENDIF}
 end;
 
-procedure Test_Structs;
+procedure Test_DiskStructs;
 begin
   Assert(KV_SystemFile_HeaderSize = 1024);
   Assert(KV_DatabaseListFile_HeaderSize = 1024);
@@ -65,7 +74,7 @@ begin
   Assert(KV_BlobFile_RecordHeaderSize = 24);
 end;
 
-procedure Test_Hash1;
+procedure Test_DiskHash1;
 const
   TestN = 10000;
 type
@@ -96,7 +105,7 @@ begin
   end;
 end;
 
-procedure Test_Hash2;
+procedure Test_DiskHash2;
 var
   I : Integer;
   H1, H2 : UInt64;
@@ -126,9 +135,10 @@ begin
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := GetTickCount;
   for I := 1 to 100000 do
-     kvLevel1HashString('Hello world', True);
+    kvLevel1HashString('Hello world', True);
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Hash:', T1 / 1000:0:2, 's');
+  Writeln('DiskHash:', T1 / 1000:0:2, 's');
+  Writeln;
   {$ENDIF}{$ENDIF}
 
   // kvLevelNHash
@@ -145,14 +155,38 @@ begin
 end;
 
 procedure Test_HashListHashString;
+{$IFDEF Profile}{$IFDEF MSWINDOWS}
+var
+  T1 : LongWord;
+  I : Integer;
+{$ENDIF}{$ENDIF}
 begin
-  Assert(kvhlHashString('a') = $C711B4BF);
-  Assert(kvhlHashString('b') = $CCAA8AD3);
-  Assert(kvhlHashString('i') = $EADA25DF);
-  Assert(kvhlHashString('ab') = $707B03CE);
-  Assert(kvhlHashString('abc') = $82DE6531);
-  Assert(kvhlHashString(#0#0#0#0) = $6271041F);
+  Assert(kvhlHashString('')       = $5A1F7304);
+  Assert(kvhlHashString('a')      = $12987CA7);
+  Assert(kvhlHashString('b')      = $88304CC6);
+  Assert(kvhlHashString('c')      = $7DA85CF8);
+  Assert(kvhlHashString('d')      = $F3402C0B);
+  Assert(kvhlHashString('e')      = $58F83C3D);
+  Assert(kvhlHashString('f')      = $26900C4F);
+  Assert(kvhlHashString('i')      = $AF58FDB3);
+  Assert(kvhlHashString('ab')     = $98D1B8AF);
+  Assert(kvhlHashString('abc')    = $24712980);
+  Assert(kvhlHashString(#0#0#0)   = $988A254D);
+  Assert(kvhlHashString(#0#0#0#0) = $114CA9B1);
+  Assert(kvhlHashString('a0')     = $208492F4);
+  Assert(kvhlHashString('a1')     = $B6FC82C3);
+  Assert(kvhlHashString('a2')     = $0B54B2B1);
+
   Assert(kvhlHashString('ab') <> kvhlHashString('ba'));
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  for I := 1 to 100000 do
+    kvhlHashString('Hello world', True);
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('kvhlHashString:', T1 / 1000:0:6, 's');
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
 
 procedure Test_HashList;
@@ -215,13 +249,8 @@ begin
   Assert(A = $12345678);
 end;
 
-procedure Test_System(
-          const KeyBlobRecordSize: Word32;
-          const ValBlobRecordSize: Word32);
+procedure Test_Dataset_NoFolders(const Ds: AkvBaseDataset);
 var
-  Sys : TkvSystem;
-  Db : TkvDatabase;
-  Ds : TkvDataset;
   VI : TkvIntegerValue;
   VS : TkvStringValue;
   VL : TkvListValue;
@@ -229,13 +258,310 @@ var
   Va : AkvValue;
   I, J : Integer;
   S, T : String;
-  It : TkvDatasetIterator;
+  It : AkvDatasetIterator;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 : LongWord;
   {$ENDIF}{$ENDIF}
 const
   TestN1 = 100000;
 begin
+  VI := TkvIntegerValue.Create;
+  VS := TkvStringValue.Create;
+  // add record
+  Assert(not Ds.RecordExists('testkey'));
+  VI.Value := 0;
+  Ds.AddRecord('testkey', VI);
+  Assert(Ds.RecordExists('testkey'));
+  // add records
+  for I := 1 to TestN1 do
+    Assert(not Ds.RecordExists(IntToStr(I)));
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Dataset_NoFolders:');
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      VI.Value := I;
+      Ds.AddRecord(IntToStr(I), VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Add:', T1 / 1000:0:2, 's');
+  {$ENDIF}{$ENDIF}
+  // records exist
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    Assert(Ds.RecordExists(IntToStr(I)));
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Locate:', T1 / 1000:0:2, 's');
+  {$ENDIF}{$ENDIF}
+  // get records
+  Va := Ds.GetRecord('testkey');
+  Assert(Va.TypeId = KV_Value_TypeId_Integer);
+  Assert(Va.AsString = '0');
+  Va.Free;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I);
+      Va := Ds.GetRecord(S);
+      Assert(Va.TypeId = KV_Value_TypeId_Integer);
+      Assert(Va.AsString = S);
+      Va.Free;
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Get:', T1 / 1000:0:2, 's');
+  {$ENDIF}{$ENDIF}
+  // set record
+  Va := Ds.GetRecord('102');
+  Assert(Assigned(Va));
+  Assert(Va.AsString = '102');
+  Va.Free;
+  VI.Value := 10;
+  Ds.SetRecord('102', VI);
+  Va := Ds.GetRecord('102');
+  Assert(Assigned(Va));
+  Assert(Va.AsString = '10');
+  Va.Free;
+  Assert(Ds.GetRecordAsInteger('102') = 10);
+  Assert(Ds.GetRecordAsString('102') = '10');
+  // delete record
+  S := IntToStr(103);
+  Assert(Ds.RecordExists(S));
+  Ds.DeleteRecord(S);
+  Assert(not Ds.RecordExists(S));
+  // delete records
+  for I := 10 to 19 do
+    begin
+      S := IntToStr(I);
+      Assert(Ds.RecordExists(S));
+      Ds.DeleteRecord(S);
+      Assert(not Ds.RecordExists(S));
+    end;
+  // iterate records
+  Ds.DeleteRecord('testkey');
+  Ds.DeleteRecord('102');
+  Assert(Ds.IterateRecords('', It));
+  for I := 1 to TestN1 - 13 do
+    begin
+      S := Ds.IteratorGetKey(It);
+      Va := Ds.IteratorGetValue(It);
+      Assert(Va.AsString = S);
+      Va.Free;
+      Assert(Ds.IterateNextRecord(It));
+    end;
+  Assert(not Ds.IterateNextRecord(It));
+  FreeAndNil(It);
+  // long key
+  S := '1234567890123456789012345678901234567890';
+  VI.Value := 40;
+  Ds.AddRecord(S, VI);
+  Assert(Ds.RecordExists(S));
+  Va := Ds.GetRecord(S);
+  Assert(Va.AsString = '40');
+  Ds.DeleteRecord(S);
+  Assert(not Ds.RecordExists(S));
+  Va.Free;
+  // long key
+  S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
+  VI.Value := 50;
+  Ds.AddRecord(S, VI);
+  Assert(Ds.RecordExists(S));
+  Va := Ds.GetRecord(S);
+  Assert(Va.AsString = '50');
+  Ds.DeleteRecord(S);
+  Assert(not Ds.RecordExists(S));
+  Va.Free;
+  // long key - growing size
+  S := '';
+  for I := 1 to 2048 do
+    begin
+      S := S + 'x';
+      VI.Value := 50;
+      Ds.AddRecord(S, VI);
+      Assert(Ds.RecordExists(S));
+      Va := Ds.GetRecord(S);
+      Assert(Va.AsString = '50');
+      Ds.DeleteRecord(S);
+      Assert(not Ds.RecordExists(S));
+      Va.Free;
+    end;
+  // long value
+  S := '1234567890123456789012345678901234567890';
+  VS.Value := S;
+  Ds.AddRecord('longv', VS);
+  Assert(Ds.RecordExists('longv'));
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  // long value
+  S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
+  VS.Value := S;
+  Ds.SetRecord('longv', VS);
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  // long value
+  S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
+       '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
+  VS.Value := S;
+  Ds.SetRecord('longv', VS);
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  // long value - grow and shrink
+  S := '';
+  for I := 1 to 4096 do
+    begin
+      VS.Value := S;
+      Ds.SetRecord('longv', VS);
+      Va := Ds.GetRecord('longv');
+      Assert(Va.AsString = S);
+      Va.Free;
+      S := S + '.';
+    end;
+  for I := 1 to 4096 do
+    begin
+      Delete(S, 1, 1);
+      VS.Value := S;
+      Ds.SetRecord('longv', VS);
+      Va := Ds.GetRecord('longv');
+      Assert(Va.AsString = S);
+      Va.Free;
+    end;
+  // long value - grow and shrink
+  S := '';
+  for I := 1 to 1024 do
+    S := S + '1234567890';
+  VS.Value := S;
+  Ds.SetRecord('longv', VS);
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  S := '';
+  for I := 1 to 4096 do
+    S := S + '1234567890';
+  VS.Value := S;
+  Ds.SetRecord('longv', VS);
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  S := '';
+  for I := 1 to 1024 do
+    S := S + '1234567890';
+  VS.Value := S;
+  Ds.SetRecord('longv', VS);
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  S := '1';
+  VS.Value := S;
+  Ds.SetRecord('longv', VS);
+  Va := Ds.GetRecord('longv');
+  Assert(Va.AsString = S);
+  Va.Free;
+  // append short and long
+  S := '';
+  VS.AsString := '';
+  Ds.AddRecord('append', VS);
+  for I := 1 to 4096 do
+    begin
+      VS.AsString := '.';
+      Ds.AppendRecord('append', VS);
+      Va := Ds.GetRecord('append');
+      S := S + '.';
+      Assert(Va.AsString = S);
+      Va.Free;
+  end;
+  Ds.DeleteRecord('append');
+  // append long and long
+  VS.AsString := '';
+  Ds.AddRecord('append', VS);
+  S := '';
+  for I := 1 to 500 do
+    S := S + '1234567890';
+  VS.AsString := S;
+  Ds.AppendRecord('append', VS);
+  Va := Ds.GetRecord('append');
+  Assert(Va.AsString = S);
+  Va.Free;
+  T := '';
+  for I := 1 to 500 do
+    T := T + '123.567890';
+  VS.AsString := T;
+  Ds.AppendRecord('append', VS);
+  Va := Ds.GetRecord('append');
+  Assert(Va.AsString = S + T);
+  Va.Free;
+  Ds.DeleteRecord('append');
+  // append list
+  VL := TkvListValue.Create;
+  Ds.AddRecord('append', VL);
+  VL.Add(TkvIntegerValue.Create(1));
+  S := '';
+  for I := 1 to 500 do
+    begin
+      Ds.AppendRecord('append', VL);
+      if I > 1 then
+        S := S + ',';
+      S := S + '1';
+      Va := Ds.GetRecord('append');
+      Assert(Va.AsString = '[' + S + ']');
+      Va.Free;
+    end;
+  Ds.DeleteRecord('append');
+  VL.Free;
+  // append dictionary
+  VD := TkvDictionaryValue.Create;
+  Ds.AddRecord('append', VD);
+  for I := 1 to 500 do
+    begin
+      VD.Clear;
+      VD.Add(IntToStr(I), TkvIntegerValue.Create(I));
+      Ds.AppendRecord('append', VD);
+      Va := Ds.GetRecord('append');
+      for J := 1 to I do
+        begin
+          Assert(TkvDictionaryValue(Va).Exists(IntToStr(J)));
+          Assert(TkvDictionaryValue(Va).GetValueAsInteger(IntToStr(J)) = J);
+        end;
+      Va.Free;
+    end;
+  VD.Free;
+  // Fin
+  VI.Free;
+  VS.Free;
+end;
+
+procedure Test_DiskSystem(
+          const KeyBlobRecordSize: Word32;
+          const ValBlobRecordSize: Word32);
+var
+  Sys : TkvSystem;
+  Db : TkvDatabase;
+  Ds : TkvDataset;
+const
+  TestN1 = 100000;
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_DiskSystem(', KeyBlobRecordSize, ', ', ValBlobRecordSize, '):');
+  {$ENDIF}{$ENDIF}
   DeleteFile(BasePath + 'testsys.kvsys');
   DeleteFile(BasePath + 'testsys.kvdbl');
   DeleteFile(BasePath + 'testsys._sys.info.kvh');
@@ -249,8 +575,6 @@ begin
   DeleteFile(BasePath + 'testsys.TESTDB.testds2.k.kvbl');
   DeleteFile(BasePath + 'testsys.TESTDB.testds2.v.kvbl');
 
-  VI := TkvIntegerValue.Create;
-  VS := TkvStringValue.Create;
   Sys := TkvSystem.Create(BasePath, 'testsys');
   try
     // system create/delete
@@ -276,12 +600,12 @@ begin
       Sys.UserDataStr := '123';
       Assert(Sys.UserDataStr = '123');
       // system unique id
-      Assert(Sys.AllocateSystemUniqueId = 1);
-      Assert(Sys.AllocateSystemUniqueId = 2);
+      Assert(Sys.AllocateUniqueId = 1);
+      Assert(Sys.AllocateUniqueId = 2);
       // create database
       Assert(not Sys.DatabaseExists('TESTDB'));
       Assert(Sys.GetDatabaseCount = 0);
-      Db := Sys.CreateDatabase('TESTDB');
+      Db := Sys.CreateDatabase('TESTDB') as TkvDatabase;
       Assert(Assigned(Db));
       Assert(Db.Name = 'TESTDB');
       Assert(Sys.GetDatabaseCount = 1);
@@ -292,10 +616,10 @@ begin
       Assert(Sys.AllocateDatabaseUniqueId('TESTDB') = 2);
       // create datasets
       Assert(not Sys.DatasetExists('TESTDB', 'testds'));
-      Ds := Sys.CreateDataset('TESTDB', 'testds', False, KeyBlobRecordSize, ValBlobRecordSize);
+      Ds := Sys.CreateDiskDataset('TESTDB', 'testds', False, KeyBlobRecordSize, ValBlobRecordSize);
       Assert(Assigned(Ds));
       Assert(Sys.DatasetExists('TESTDB', 'testds'));
-      Ds := Sys.CreateDataset('TESTDB', 'testds2', False, KeyBlobRecordSize, ValBlobRecordSize);
+      Ds := Sys.CreateDiskDataset('TESTDB', 'testds2', False, KeyBlobRecordSize, ValBlobRecordSize);
       Assert(Sys.DatasetExists('TESTDB', 'testds2'));
       Assert(Ds <> Sys.RequireDatasetByName('TESTDB', 'testds'));
       Assert(Ds = Sys.RequireDatasetByName('TESTDB', 'testds2'));
@@ -305,281 +629,8 @@ begin
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds2') = 1);
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds') = 3);
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds2') = 2);
-      // add record
-      Assert(not Ds.RecordExists('testkey'));
-      VI.Value := 0;
-      Ds.AddRecord('testkey', VI);
-      Assert(Ds.RecordExists('testkey'));
-      // add records
-      for I := 1 to TestN1 do
-        Assert(not Ds.RecordExists(IntToStr(I)));
-      {$IFDEF Profile}{$IFDEF MSWINDOWS}
-      T1 := GetTickCount;
-      {$ENDIF}{$ENDIF}
-      for I := 1 to TestN1 do
-        begin
-          VI.Value := I;
-          Ds.AddRecord(IntToStr(I), VI);
-        end;
-      {$IFDEF Profile}{$IFDEF MSWINDOWS}
-      T1 := LongWord(GetTickCount - T1);
-      Writeln('Add:', T1 / 1000:0:2, 's');
-      {$ENDIF}{$ENDIF}
-      // records exist
-      {$IFDEF Profile}{$IFDEF MSWINDOWS}
-      T1 := GetTickCount;
-      {$ENDIF}{$ENDIF}
-      for I := 1 to TestN1 do
-        Assert(Ds.RecordExists(IntToStr(I)));
-      {$IFDEF Profile}{$IFDEF MSWINDOWS}
-      T1 := LongWord(GetTickCount - T1);
-      Writeln('Locate:', T1 / 1000:0:2, 's');
-      {$ENDIF}{$ENDIF}
-      // get records
-      Va := Ds.GetRecord('testkey');
-      Assert(Va.TypeId = KV_Value_TypeId_Integer);
-      Assert(Va.AsString = '0');
-      Va.Free;
-      {$IFDEF Profile}{$IFDEF MSWINDOWS}
-      T1 := GetTickCount;
-      {$ENDIF}{$ENDIF}
-      for I := 1 to TestN1 do
-        begin
-          S := IntToStr(I);
-          Va := Ds.GetRecord(S);
-          Assert(Va.TypeId = KV_Value_TypeId_Integer);
-          Assert(Va.AsString = S);
-          Va.Free;
-        end;
-      {$IFDEF Profile}{$IFDEF MSWINDOWS}
-      T1 := LongWord(GetTickCount - T1);
-      Writeln('Get:', T1 / 1000:0:2, 's');
-      {$ENDIF}{$ENDIF}
-      // set record
-      Va := Ds.GetRecord('102');
-      Assert(Assigned(Va));
-      Assert(Va.AsString = '102');
-      Va.Free;
-      VI.Value := 10;
-      Ds.SetRecord('102', VI);
-      Va := Ds.GetRecord('102');
-      Assert(Assigned(Va));
-      Assert(Va.AsString = '10');
-      Va.Free;
-      Assert(Ds.GetRecordAsInteger('102') = 10);
-      Assert(Ds.GetRecordAsString('102') = '10');
-      // delete record
-      S := IntToStr(103);
-      Assert(Ds.RecordExists(S));
-      Ds.DeleteRecord(S);
-      Assert(not Ds.RecordExists(S));
-      // delete records
-      for I := 10 to 19 do
-        begin
-          S := IntToStr(I);
-          Assert(Ds.RecordExists(S));
-          Ds.DeleteRecord(S);
-          Assert(not Ds.RecordExists(S));
-        end;
-      // iterate records
-      Ds.DeleteRecord('testkey');
-      Ds.DeleteRecord('102');
-      Assert(Ds.IterateRecords('', It));
-      for I := 1 to TestN1 - 13 do
-        begin
-          S := Ds.IteratorGetKey(It);
-          Va := Ds.IteratorGetValue(It);
-          Assert(Va.AsString = S);
-          Va.Free;
-          Assert(Ds.IterateNextRecord(It));
-        end;
-      Assert(not Ds.IterateNextRecord(It));
-      // long key
-      S := '1234567890123456789012345678901234567890';
-      VI.Value := 40;
-      Ds.AddRecord(S, VI);
-      Assert(Ds.RecordExists(S));
-      Va := Ds.GetRecord(S);
-      Assert(Va.AsString = '40');
-      Ds.DeleteRecord(S);
-      Assert(not Ds.RecordExists(S));
-      Va.Free;
-      // long key
-      S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
-      VI.Value := 50;
-      Ds.AddRecord(S, VI);
-      Assert(Ds.RecordExists(S));
-      Va := Ds.GetRecord(S);
-      Assert(Va.AsString = '50');
-      Ds.DeleteRecord(S);
-      Assert(not Ds.RecordExists(S));
-      Va.Free;
-      // long key - growing size
-      S := '';
-      for I := 1 to 2048 do
-        begin
-          S := S + 'x';
-          VI.Value := 50;
-          Ds.AddRecord(S, VI);
-          Assert(Ds.RecordExists(S));
-          Va := Ds.GetRecord(S);
-          Assert(Va.AsString = '50');
-          Ds.DeleteRecord(S);
-          Assert(not Ds.RecordExists(S));
-          Va.Free;
-        end;
-      // long value
-      S := '1234567890123456789012345678901234567890';
-      VS.Value := S;
-      Ds.AddRecord('longv', VS);
-      Assert(Ds.RecordExists('longv'));
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      // long value
-      S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
-      VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      // long value
-      S := '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890' +
-           '12345678901234567890123456789012345678901234567890123456789012345678901234567890';
-      VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      // long value - grow and shrink
-      S := '';
-      for I := 1 to 4096 do
-        begin
-          VS.Value := S;
-          Ds.SetRecord('longv', VS);
-          Va := Ds.GetRecord('longv');
-          Assert(Va.AsString = S);
-          Va.Free;
-          S := S + '.';
-        end;
-      for I := 1 to 4096 do
-        begin
-          Delete(S, 1, 1);
-          VS.Value := S;
-          Ds.SetRecord('longv', VS);
-          Va := Ds.GetRecord('longv');
-          Assert(Va.AsString = S);
-          Va.Free;
-        end;
-      // long value - grow and shrink
-      S := '';
-      for I := 1 to 1024 do
-        S := S + '1234567890';
-      VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      S := '';
-      for I := 1 to 4096 do
-        S := S + '1234567890';
-      VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      S := '';
-      for I := 1 to 1024 do
-        S := S + '1234567890';
-      VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      S := '1';
-      VS.Value := S;
-      Ds.SetRecord('longv', VS);
-      Va := Ds.GetRecord('longv');
-      Assert(Va.AsString = S);
-      Va.Free;
-      // append short and long
-      S := '';
-      VS.AsString := '';
-      Ds.AddRecord('append', VS);
-      for I := 1 to 4096 do
-        begin
-          VS.AsString := '.';
-          Ds.AppendRecord('append', VS);
-          Va := Ds.GetRecord('append');
-          S := S + '.';
-          Assert(Va.AsString = S);
-          Va.Free;
-      end;
-      Ds.DeleteRecord('append');
-      // append long and long
-      VS.AsString := '';
-      Ds.AddRecord('append', VS);
-      S := '';
-      for I := 1 to 500 do
-        S := S + '1234567890';
-      VS.AsString := S;
-      Ds.AppendRecord('append', VS);
-      Va := Ds.GetRecord('append');
-      Assert(Va.AsString = S);
-      Va.Free;
-      T := '';
-      for I := 1 to 500 do
-        T := T + '123.567890';
-      VS.AsString := T;
-      Ds.AppendRecord('append', VS);
-      Va := Ds.GetRecord('append');
-      Assert(Va.AsString = S + T);
-      Va.Free;
-      Ds.DeleteRecord('append');
-      // append list
-      VL := TkvListValue.Create;
-      Ds.AddRecord('append', VL);
-      VL.Add(TkvIntegerValue.Create(1));
-      S := '';
-      for I := 1 to 500 do
-        begin
-          Ds.AppendRecord('append', VL);
-          if I > 1 then
-            S := S + ',';
-          S := S + '1';
-          Va := Ds.GetRecord('append');
-          Assert(Va.AsString = '[' + S + ']');
-          Va.Free;
-        end;
-      Ds.DeleteRecord('append');
-      VL.Free;
-      // append dictionary
-      VD := TkvDictionaryValue.Create;
-      Ds.AddRecord('append', VD);
-      for I := 1 to 500 do
-        begin
-          VD.Clear;
-          VD.Add(IntToStr(I), TkvIntegerValue.Create(I));
-          Ds.AppendRecord('append', VD);
-          Va := Ds.GetRecord('append');
-          for J := 1 to I do
-            begin
-              Assert(TkvDictionaryValue(Va).Exists(IntToStr(J)));
-              Assert(TkvDictionaryValue(Va).GetValueAsInteger(IntToStr(J)) = J);
-            end;
-          Va.Free;
-        end;
-      VD.Free;
+      // test dataset
+      Test_Dataset_NoFolders(Ds);
       // close database
       Sys.Close;
     finally
@@ -588,16 +639,14 @@ begin
     Assert(not Sys.Exists);
   finally
     Sys.Free;
-    VI.Free;
-    VS.Free;
   end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
 
-procedure Test_System_Folders;
+procedure Test_Dataset_Folders(const Ds: AkvBaseDataset);
 var
-  Sys : TkvSystem;
-  Db : TkvDatabase;
-  Ds : TkvDataset;
   VI : TkvIntegerValue;
   VS : TkvStringValue;
   VF : TkvFolderValue;
@@ -607,6 +656,131 @@ var
 const
   TestN1 = 100000;
 begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Dataset_Folders:');
+  {$ENDIF}{$ENDIF}
+
+  VI := TkvIntegerValue.Create;
+  VS := TkvStringValue.Create;
+  // add records
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Assert(not Ds.RecordExists(S));
+    end;
+  for I := 1 to TestN1 do
+    begin
+      VI.Value := I;
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Ds.AddRecord(S, VI);
+    end;
+  // records exist
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Assert(Ds.RecordExists(S));
+    end;
+  // get records
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Va := Ds.GetRecord(S);
+      Assert(Va.TypeId = KV_Value_TypeId_Integer);
+      Assert(Va.AsString = IntToStr(I));
+      Va.Free;
+    end;
+  // delete records
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Ds.DeleteRecord(S);
+      Assert(not Ds.RecordExists(S));
+    end;
+  // delete folders
+  for I := 0 to TestN1 div 100 do
+    begin
+      S := IntToStr(I);
+      Assert(Ds.FolderExists(S));
+      Ds.DeleteRecord(S);
+      Assert(not Ds.FolderExists(S));
+    end;
+  // folders
+  Ds.AddRecordString('abc/001', '1');
+  Ds.AddRecordString('abc/002', '2');
+  Ds.AddRecordString('abc/003', '2');
+  Ds.AddRecordString('xyz/01', '01');
+  Ds.AddRecordString('xyz/02', '02');
+  Ds.AddRecordString('xyz/03', '03');
+  Ds.AddRecordString('xyz/aaa/bbb/01', '01');
+  Assert(Ds.FolderExists('/'));
+  Assert(Ds.FolderExists('abc'));
+  Assert(not Ds.FolderExists('abc/001'));
+  Assert(Ds.FolderExists('xyz'));
+  Assert(Ds.FolderExists('xyz/aaa'));
+  Assert(Ds.FolderExists('xyz/aaa/bbb'));
+  Assert(not Ds.FolderExists('xyz/aaa/bbb/01'));
+  Va1 := Ds.GetRecord('/');
+  Va := Va1;
+  Assert(Assigned(Va));
+  Assert(Va is TkvFolderValue);
+  VF := Va as TkvFolderValue;
+  Assert(VF.Exists('xyz'));
+  Va := VF.GetValue('xyz');
+  Assert(Assigned(Va));
+  Assert(Va is TkvFolderValue);
+  VF := Va as TkvFolderValue;
+  Assert(VF.Exists('01'));
+  Assert(VF.GetValueAsString('01') = '01');
+  Assert(VF.Exists('aaa'));
+  Va := VF.GetValue('aaa');
+  Assert(Assigned(Va));
+  Assert(Va is TkvFolderValue);
+  VF := Va as TkvFolderValue;
+  Assert(VF.AsString = '{bbb:{01:"01"}}');
+  Assert(VF.Exists('bbb'));
+  Va := VF.GetValue('bbb');
+  Assert(Assigned(Va));
+  Assert(Va is TkvFolderValue);
+  VF := Va as TkvFolderValue;
+  Assert(VF.Exists('01'));
+  Assert(VF.AsString = '{01:"01"}');
+  // folder add
+  Ds.AddRecord('a', Va1);
+  Assert(Ds.RecordExists('abc/001'));
+  Assert(Ds.RecordExists('a/abc/001'));
+  Assert(Ds.RecordExists('a/abc/002'));
+  Assert(Ds.RecordExists('a/abc/003'));
+  Assert(not Ds.RecordExists('a/abc/004'));
+  Assert(Ds.RecordExists('a/xyz/aaa/bbb/01'));
+  Assert(Ds.GetRecordAsString('a/abc/001') = '1');
+  Assert(Ds.GetRecordAsString('a/xyz/aaa/bbb/01') = '01');
+  // folder delete
+  Ds.DeleteFolderRecords('a');
+  Assert(Ds.FolderExists('a'));
+  Assert(Ds.RecordExists('abc/001'));
+  Assert(not Ds.RecordExists('a/abc/001'));
+  Assert(not Ds.RecordExists('a/xyz/aaa/bbb/01'));
+  Assert(not Ds.FolderExists('a/xyz'));
+  Ds.DeleteRecord('a');
+  Assert(not Ds.FolderExists('a'));
+  Va1.Free;
+  // Fin
+  VI.Free;
+  VS.Free;
+end;
+
+procedure Test_DiskSystem_Folders;
+var
+  Sys : TkvSystem;
+  Db : TkvDatabase;
+  Ds : TkvDataset;
+const
+  TestN1 = 100000;
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_DiskSystem_Folders:');
+  {$ENDIF}{$ENDIF}
+
   DeleteFile(BasePath + 'testsys.kvsys');
   DeleteFile(BasePath + 'testsys.kvdbl');
   DeleteFile(BasePath + 'testsys._sys.info.kvh');
@@ -620,8 +794,6 @@ begin
   DeleteFile(BasePath + 'testsys.TESTDB.testds2.k.kvbl');
   DeleteFile(BasePath + 'testsys.TESTDB.testds2.v.kvbl');
 
-  VI := TkvIntegerValue.Create;
-  VS := TkvStringValue.Create;
   Sys := TkvSystem.Create(BasePath, 'testsys');
   try
     // system create/delete
@@ -645,7 +817,7 @@ begin
       // create database
       Assert(not Sys.DatabaseExists('TESTDB'));
       Assert(Sys.GetDatabaseCount = 0);
-      Db := Sys.CreateDatabase('TESTDB');
+      Db := Sys.CreateDatabase('TESTDB') as TkvDatabase;
       Assert(Assigned(Db));
       Assert(Db.Name = 'TESTDB');
       Assert(Sys.GetDatabaseCount = 1);
@@ -653,112 +825,12 @@ begin
       Assert(Db = Sys.RequireDatabaseByName('TESTDB'));
       // create datasets
       Assert(not Sys.DatasetExists('TESTDB', 'testds'));
-      Ds := Sys.CreateDataset('TESTDB', 'testds', True);
+      Ds := Sys.CreateDiskDataset('TESTDB', 'testds', True);
       Assert(Assigned(Ds));
       Assert(Sys.DatasetExists('TESTDB', 'testds'));
       Assert(Ds = Sys.RequireDatasetByName('TESTDB', 'testds'));
-      // add records
-      for I := 1 to TestN1 do
-        begin
-          S := IntToStr(I div 100) + '/' + IntToStr(I);
-          Assert(not Ds.RecordExists(S));
-        end;
-      for I := 1 to TestN1 do
-        begin
-          VI.Value := I;
-          S := IntToStr(I div 100) + '/' + IntToStr(I);
-          Ds.AddRecord(S, VI);
-        end;
-      // records exist
-      for I := 1 to TestN1 do
-        begin
-          S := IntToStr(I div 100) + '/' + IntToStr(I);
-          Assert(Ds.RecordExists(S));
-        end;
-      // get records
-      for I := 1 to TestN1 do
-        begin
-          S := IntToStr(I div 100) + '/' + IntToStr(I);
-          Va := Ds.GetRecord(S);
-          Assert(Va.TypeId = KV_Value_TypeId_Integer);
-          Assert(Va.AsString = IntToStr(I));
-          Va.Free;
-        end;
-      // delete records
-      for I := 1 to TestN1 do
-        begin
-          S := IntToStr(I div 100) + '/' + IntToStr(I);
-          Ds.DeleteRecord(S);
-          Assert(not Ds.RecordExists(S));
-        end;
-      // delete folders
-      for I := 0 to TestN1 div 100 do
-        begin
-          S := IntToStr(I);
-          Assert(Ds.FolderExists(S));
-          Ds.DeleteRecord(S);
-          Assert(not Ds.FolderExists(S));
-        end;
-      // folders
-      Ds.AddRecordString('abc/001', '1');
-      Ds.AddRecordString('abc/002', '2');
-      Ds.AddRecordString('abc/003', '2');
-      Ds.AddRecordString('xyz/01', '01');
-      Ds.AddRecordString('xyz/02', '02');
-      Ds.AddRecordString('xyz/03', '03');
-      Ds.AddRecordString('xyz/aaa/bbb/01', '01');
-      Assert(Ds.FolderExists('/'));
-      Assert(Ds.FolderExists('abc'));
-      Assert(not Ds.FolderExists('abc/001'));
-      Assert(Ds.FolderExists('xyz'));
-      Assert(Ds.FolderExists('xyz/aaa'));
-      Assert(Ds.FolderExists('xyz/aaa/bbb'));
-      Assert(not Ds.FolderExists('xyz/aaa/bbb/01'));
-      Va1 := Ds.GetRecord('/');
-      Va := Va1;
-      Assert(Assigned(Va));
-      Assert(Va is TkvFolderValue);
-      VF := Va as TkvFolderValue;
-      Assert(VF.Exists('xyz'));
-      Va := VF.GetValue('xyz');
-      Assert(Assigned(Va));
-      Assert(Va is TkvFolderValue);
-      VF := Va as TkvFolderValue;
-      Assert(VF.Exists('01'));
-      Assert(VF.GetValueAsString('01') = '01');
-      Assert(VF.Exists('aaa'));
-      Va := VF.GetValue('aaa');
-      Assert(Assigned(Va));
-      Assert(Va is TkvFolderValue);
-      VF := Va as TkvFolderValue;
-      Assert(VF.AsString = '{bbb:{01:"01"}}');
-      Assert(VF.Exists('bbb'));
-      Va := VF.GetValue('bbb');
-      Assert(Assigned(Va));
-      Assert(Va is TkvFolderValue);
-      VF := Va as TkvFolderValue;
-      Assert(VF.Exists('01'));
-      Assert(VF.AsString = '{01:"01"}');
-      // folder add
-      Ds.AddRecord('a', Va1);
-      Assert(Ds.RecordExists('abc/001'));
-      Assert(Ds.RecordExists('a/abc/001'));
-      Assert(Ds.RecordExists('a/abc/002'));
-      Assert(Ds.RecordExists('a/abc/003'));
-      Assert(not Ds.RecordExists('a/abc/004'));
-      Assert(Ds.RecordExists('a/xyz/aaa/bbb/01'));
-      Assert(Ds.GetRecordAsString('a/abc/001') = '1');
-      Assert(Ds.GetRecordAsString('a/xyz/aaa/bbb/01') = '01');
-      // folder delete
-      Ds.DeleteFolderRecords('a');
-      Assert(Ds.FolderExists('a'));
-      Assert(Ds.RecordExists('abc/001'));
-      Assert(not Ds.RecordExists('a/abc/001'));
-      Assert(not Ds.RecordExists('a/xyz/aaa/bbb/01'));
-      Assert(not Ds.FolderExists('a/xyz'));
-      Ds.DeleteRecord('a');
-      Assert(not Ds.FolderExists('a'));
-      Va1.Free;
+      // test dataset
+      Test_Dataset_Folders(Ds);
       // close database
       Sys.Close;
     finally
@@ -767,9 +839,10 @@ begin
     Assert(not Sys.Exists);
   finally
     Sys.Free;
-    VI.Free;
-    VS.Free;
   end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
 
 function BackupPath: String;
@@ -783,7 +856,7 @@ begin
   {$ENDIF}
 end;
 
-procedure Test_System_Backup;
+procedure Test_DiskSystem_Backup;
 var
   BakPath : String;
   Sys : TkvSystem;
@@ -799,6 +872,10 @@ var
 const
   TestN1 = 5000;
 begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_DiskSystem_Backup:');
+  {$ENDIF}{$ENDIF}
+
   DeleteFile(BasePath + 'testsys.kvsys');
   DeleteFile(BasePath + 'testsys.kvdbl');
   DeleteFile(BasePath + 'testsys.TESTDB.kvdsl');
@@ -825,16 +902,16 @@ begin
       // system attributes
       Assert(Sys.UserDataStr = 'abc');
       // system unique id
-      Assert(Sys.AllocateSystemUniqueId = 1);
-      Assert(Sys.AllocateSystemUniqueId = 2);
+      Assert(Sys.AllocateUniqueId = 1);
+      Assert(Sys.AllocateUniqueId = 2);
       // create database
-      Db := Sys.CreateDatabase('TESTDB');
+      Db := Sys.CreateDatabase('TESTDB') as TkvDatabase;
       Assert(Assigned(Db));
       // database unique id
       Assert(Sys.AllocateDatabaseUniqueId('TESTDB') = 1);
       Assert(Sys.AllocateDatabaseUniqueId('TESTDB') = 2);
       // create datasets
-      Ds := Sys.CreateDataset('TESTDB', 'testds', True);
+      Ds := Sys.CreateDiskDataset('TESTDB', 'testds', True);
       // dataset unique id
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds') = 1);
       Assert(Sys.AllocateDatasetUniqueId('TESTDB', 'testds') = 2);
@@ -869,8 +946,8 @@ begin
         // system attributes
         Assert(BakSys.UserDataStr = 'abc');
         // get dataset
-        BakDb := BakSys.RequireDatabaseByName('TESTDB');
-        BakDs := BakDb.RequireDatasetByName('testds');
+        BakDb := BakSys.RequireDatabaseByName('TESTDB') as TkvDatabase;
+        BakDs := BakDb.RequireDatasetByName('testds') as TkvDataset;
         // get records
         for I := 1 to TestN1 do
           begin
@@ -886,8 +963,8 @@ begin
             Va.Free;
           end;
         // system unique id
-        Assert(Sys.AllocateSystemUniqueId = 3);
-        Assert(BakSys.AllocateSystemUniqueId = 3);
+        Assert(Sys.AllocateUniqueId = 3);
+        Assert(BakSys.AllocateUniqueId = 3);
         // database unique id
         Assert(Sys.AllocateDatabaseUniqueId('TESTDB') = 3);
         Assert(BakSys.AllocateDatabaseUniqueId('TESTDB') = 3);
@@ -908,7 +985,118 @@ begin
     Sys.Free;
     VI.Free;
   end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
+
+{$IFDEF TestMemSystem}
+procedure Test_MemSystem_Dataset;
+var
+  Ds : TkvMemDataset;
+  VI : TkvIntegerValue;
+  Va : AkvValue;
+  I : Integer;
+  S : String;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 : LongWord;
+  {$ENDIF}{$ENDIF}
+const
+  TestN1 = 100000;
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_MemSystem_Dataset:');
+  {$ENDIF}{$ENDIF}
+
+  VI := TkvIntegerValue.Create;
+
+  // Dataset - No folders
+  Ds := TkvMemDataset.Create('testds2', False);
+
+  // add record
+  Assert(not Ds.RecordExists('mtestkey'));
+  VI.Value := 0;
+  Ds.AddRecord('mtestkey', VI);
+  Assert(Ds.RecordExists('mtestkey'));
+  // add records
+  for I := 1 to TestN1 do
+    Assert(not Ds.RecordExists(IntToStr(I)));
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      VI.Value := I;
+      Ds.AddRecord(IntToStr(I), VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Add:', T1 / 1000:0:4, 's');
+  {$ENDIF}{$ENDIF}
+  // records exist
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    Assert(Ds.RecordExists(IntToStr(I)));
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Locate:', T1 / 1000:0:4, 's');
+  {$ENDIF}{$ENDIF}
+  // get records
+  Va := Ds.GetRecord('mtestkey');
+  Assert(Va.TypeId = KV_Value_TypeId_Integer);
+  Assert(Va.AsString = '0');
+  Va.Free;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I);
+      Va := Ds.GetRecord(S);
+      Assert(Va.TypeId = KV_Value_TypeId_Integer);
+      Assert(Va.AsString = S);
+      Va.Free;
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Get:', T1 / 1000:0:4, 's');
+  {$ENDIF}{$ENDIF}
+  // delete records
+  Ds.DeleteRecord('mtestkey');
+  Assert(not Ds.RecordExists('mtestkey'));
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I);
+      Ds.DeleteRecord(S);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('Delete:', T1 / 1000:0:4, 's');
+  {$ENDIF}{$ENDIF}
+  VI.Free;
+
+  // test dataset
+  Test_Dataset_NoFolders(Ds);
+  // fin
+  Ds.Free;
+
+  // Dataset - Use folders
+  Ds := TkvMemDataset.Create('testds2', True);
+  // test dataset
+  Test_Dataset_Folders(Ds);
+  // fin
+  Ds.Free;
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
+end;
+{$ENDIF}
 
 procedure Test_Parser;
 var
@@ -937,6 +1125,10 @@ var
   end;
 
 begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Parser:');
+  {$ENDIF}{$ENDIF}
+
   P := TkvScriptParser.Create;
   try
     Parse('CREATE DATABASE test');
@@ -1043,6 +1235,10 @@ begin
   finally
     P.Free;
   end;
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
 
 procedure Delete_Script_Database;
@@ -1112,12 +1308,17 @@ var
   end;
 
 begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Expressions:');
+  {$ENDIF}{$ENDIF}
+
   Delete_Script_Database;
 
   P := TkvScriptParser.Create;
   Sys := TkvSystem.Create(BasePath, 'testsys');
   MSys := TkvScriptSystem.Create(Sys);
   try
+    Sys.OpenNew;
     MSys.OpenNew;
     Ses := MSys.AddSession;
 
@@ -1222,24 +1423,24 @@ begin
     Exec('EVAL "d" in @a', 'false');
 
     Exec('SET @a = SETOF(["a", "b", "c"])');
-    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+    Exec('EVAL @a', 'SETOF(["b","a","c"])');
     Exec('EVAL "a" IN @a', 'true');
     Exec('EVAL "d" IN @a', 'false');
     Exec('SET @a = @a + "d"');
-    Exec('EVAL @a', 'SETOF(["b","c","d","a"])');
+    Exec('EVAL @a', 'SETOF(["b","a","c","d"])');
     Exec('EVAL "a" IN @a', 'true');
     Exec('EVAL "d" IN @a', 'true');
     Exec('SET @a = @a - "d"');
-    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+    Exec('EVAL @a', 'SETOF(["b","a","c"])');
     Exec('EVAL "d" IN @a', 'false');
 
     Exec('SET @a = SETOF("a")');
     Exec('EVAL @a', 'SETOF(["a"])');
     Exec('SET @a = @a + SETOF(["a","b","c"])');
-    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+    Exec('EVAL @a', 'SETOF(["b","a","c"])');
 
     Exec('SET @a = SETOF("a","b","c")');
-    Exec('EVAL @a', 'SETOF(["b","c","a"])');
+    Exec('EVAL @a', 'SETOF(["b","a","c"])');
 
     Exec('SET @a = SETOF()');
     Exec('EVAL @a', 'SETOF([])');
@@ -1260,21 +1461,30 @@ begin
 
     Ses.Close;
     MSys.Close;
+    Sys.Close;
 
     MSys.Delete;
+    Sys.Delete;
   finally
     MSys.Free;
     Sys.Free;
     P.Free;
   end;
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
 
-procedure Test_Script_Database;
+procedure Test_Script_Database(const Ses: TkvScriptSession);
 var
   P : TkvScriptParser;
-  Sys : TkvSystem;
-  MSys : TkvScriptSystem;
-  Ses : TkvScriptSession;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  I : Integer;
+  T1 : LongWord;
+const
+  TestN1 = 100000;
+  {$ENDIF}{$ENDIF}
 
   procedure Exec(const S: String; const ValS: String = '');
   var
@@ -1289,15 +1499,12 @@ var
   end;
 
 begin
-  Delete_Script_Database;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Database:');
+  {$ENDIF}{$ENDIF}
 
   P := TkvScriptParser.Create;
-  Sys := TkvSystem.Create(BasePath, 'testsys');
-  MSys := TkvScriptSystem.Create(Sys);
   try
-    MSys.OpenNew;
-    Ses := MSys.AddSession;
-
     Exec('CREATE DATABASE TESTDB');
     Exec('CREATE DATASET TESTDB:testds');
 
@@ -1336,7 +1543,7 @@ begin
     Exec('DELETE 2');
 
     Exec('INSERT 1 {name:"john",age:10}');
-    Exec('SELECT 1', '{name:"john",age:10}');
+    Exec('SELECT 1', '{age:10,name:"john"}');
     Exec('UPDATE 1 {name:"john"}');
     Exec('SELECT 1', '{name:"john"}');
     Exec('UPDATE 1 {}');
@@ -1389,7 +1596,7 @@ begin
     Exec('INSERT 1.@ {addr:{}}');
     Exec('SELECT 1', '{name:"john",addr:{}}');
     Exec('INSERT 1.addr {city:"ny",state:"ny"}');
-    Exec('SELECT 1', '{name:"john",addr:{city:"ny",state:"ny"}}');
+    Exec('SELECT 1', '{name:"john",addr:{state:"ny",city:"ny"}}');
     Exec('DELETE 1');
 
     Exec('INSERT 1 [1,2,3]');
@@ -1522,9 +1729,9 @@ begin
     Exec('EVAL @b.name', 'john');
     Exec('SET @b.name = "peter"');
     Exec('SET @b.age = 21');
-    Exec('EVAL @b', '{name:"peter",city:"ny",age:21}');
+    Exec('EVAL @b', '{age:21,name:"peter",city:"ny"}');
     Exec('UPDATE 1 @b');
-    Exec('SELECT 1', '{name:"peter",city:"ny",age:21}');
+    Exec('SELECT 1', '{age:21,name:"peter",city:"ny"}');
     Exec('DELETE 1');
 
     Exec('INSERT 1 null');
@@ -1639,10 +1846,30 @@ begin
     Exec('APPEND 1 {name:"john"}');
     Exec('SELECT 1', '{name:"john"}');
     Exec('APPEND 1 {name2:"john2"}');
-    Exec('SELECT 1', '{name:"john",name2:"john2"}');
+    Exec('SELECT 1', '{name2:"john2",name:"john"}');
     Exec('APPEND 1 {name3:"xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}');
-    Exec('SELECT 1', '{name:"john",name2:"john2",name3:"xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}');
+    Exec('SELECT 1', '{name3:"xxxxxxxxxxxxxxxxxxxxxxxxxxxxx",name2:"john2",name:"john"}');
     Exec('DELETE 1');
+
+    {$IFDEF Profile}{$IFDEF MSWINDOWS}
+    T1 := GetTickCount;
+    for I := 1 to TestN1 do
+      Exec('EVAL 1', '1');
+    T1 := LongWord(GetTickCount - T1);
+    Writeln('Eval:', T1 / 1000:0:2, 's');
+
+    T1 := GetTickCount;
+    for I := 1 to TestN1 do
+      Exec('INSERT ' + IntToStr(I) + ' ' + IntToStr(I));
+    T1 := LongWord(GetTickCount - T1);
+    Writeln('Add:', T1 / 1000:0:2, 's');
+
+    T1 := GetTickCount;
+    for I := 1 to TestN1 do
+      Exec('SELECT ' + IntToStr(I), IntToStr(I));
+    T1 := LongWord(GetTickCount - T1);
+    Writeln('Get:', T1 / 1000:0:2, 's');
+    {$ENDIF}{$ENDIF}
 
     Exec('CREATE PROCEDURE proc1(@par1, @par2) BEGIN RETURN @par1 + @par2 END');
     Exec('EVAL proc1(1, 2) + proc1(5, 6)', '14');
@@ -1667,12 +1894,55 @@ begin
     Exec('EVAL UNIQUE_ID TESTDB:testds', '1');
     Exec('EVAL UNIQUE_ID TESTDB:testds', '2');
 
+  finally
+    P.Free;
+  end;
+end;
+
+procedure Test_Script_Database_Disk;
+var
+  P : TkvScriptParser;
+  Sys : TkvSystem;
+  MSys : TkvScriptSystem;
+  Ses : TkvScriptSession;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
+    end;
+  end;
+
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Database_Disk:');
+  {$ENDIF}{$ENDIF}
+
+  Delete_Script_Database;
+
+  P := TkvScriptParser.Create;
+  Sys := TkvSystem.Create(BasePath, 'testsys');
+  MSys := TkvScriptSystem.Create(Sys);
+  try
+    Sys.OpenNew;
+    MSys.OpenNew;
+    Ses := MSys.AddSession;
+
+    Test_Script_Database(Ses);
+
     Exec('USE TESTDB:testds');
     Exec('INSERT P1 "Persist"');
 
     Ses.Close;
     MSys.Close;
+    Sys.Close;
 
+    Sys.Open;
     MSys.Open;
     Ses := MSys.AddSession;
 
@@ -1700,7 +1970,9 @@ begin
 
     Ses.Close;
     MSys.Close;
+    Sys.Close;
 
+    Sys.Open;
     MSys.Open;
     Ses := MSys.AddSession;
 
@@ -1710,26 +1982,36 @@ begin
 
     Ses.Close;
     MSys.Close;
+    Sys.Close;
 
     MSys.Delete;
+    Sys.Delete;
 
+    Sys.OpenNew;
     MSys.OpenNew;
     MSys.Close;
+    Sys.Close;
 
+    Sys.Open;
     MSys.Open;
     MSys.Close;
+    Sys.Close;
 
   finally
     MSys.Free;
     Sys.Free;
     P.Free;
   end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
 
-procedure Test_Script_Folders;
+{$IFDEF TestMemSystem}
+procedure Test_Script_Database_Mem;
 var
   P : TkvScriptParser;
-  Sys : TkvSystem;
+  Sys : TkvMemSystem;
   MSys : TkvScriptSystem;
   Ses : TkvScriptSession;
 
@@ -1746,15 +2028,58 @@ var
   end;
 
 begin
-  Delete_Script_Database;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Database_Mem:');
+  {$ENDIF}{$ENDIF}
 
   P := TkvScriptParser.Create;
-  Sys := TkvSystem.Create(BasePath, 'testsys');
+  Sys := TkvMemSystem.Create;
   MSys := TkvScriptSystem.Create(Sys);
   try
     MSys.OpenNew;
     Ses := MSys.AddSession;
 
+    Test_Script_Database(Ses);
+
+    Ses.Close;
+    MSys.Close;
+
+    MSys.Delete;
+
+  finally
+    MSys.Free;
+    Sys.Free;
+    P.Free;
+  end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
+end;
+{$ENDIF}
+
+procedure Test_Script_Folders(const Ses: TkvScriptSession);
+var
+  P : TkvScriptParser;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
+    end;
+  end;
+
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Folders:');
+  {$ENDIF}{$ENDIF}
+
+  P := TkvScriptParser.Create;
+  try
     // With Folders
 
     Exec('CREATE DATABASE TESTDB');
@@ -1773,11 +2098,11 @@ begin
 
     Exec('EVAL LIST_OF_KEYS TESTDB:testds\/', '{1:{}}');
     Exec('EVAL LIST_OF_KEYS TESTDB:testds\1', '{2:{}}');
-    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1/2', '{2:null,3:null,1:null}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1/2', '{3:null,2:null,1:null}');
 
-    Exec('EVAL LIST_OF_KEYS TESTDB:testds\/ RECURSE', '{1:{2:{2:null,3:null,1:null}}}');
-    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1 RECURSE', '{2:{2:null,3:null,1:null}}');
-    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1/2 RECURSE', '{2:null,3:null,1:null}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\/ RECURSE', '{1:{2:{3:null,2:null,1:null}}}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1 RECURSE', '{2:{3:null,2:null,1:null}}');
+    Exec('EVAL LIST_OF_KEYS TESTDB:testds\1/2 RECURSE', '{3:null,2:null,1:null}');
 
     Exec('UPDATE 1/2/3 2');
     Exec('SELECT 1/2/3', '2');
@@ -1921,15 +2246,15 @@ begin
     Exec('INSERT 1/2/2 2');
 
     Exec('SELECT 1/2/3', '3');
-    Exec('SELECT 1/2', '{2:2,3:3,1:1}');
-    Exec('SELECT 1', '{2:{2:2,3:3,1:1}}');
-    Exec('SELECT 1.2', '{2:2,3:3,1:1}');
+    Exec('SELECT 1/2', '{3:3,2:2,1:1}');
+    Exec('SELECT 1', '{2:{3:3,2:2,1:1}}');
+    Exec('SELECT 1.2', '{3:3,2:2,1:1}');
     Exec('SELECT 1.2.3', '3');
 
-    Exec('SELECT /', '{1:{2:{2:2,3:3,1:1}}}');
+    Exec('SELECT /', '{1:{2:{3:3,2:2,1:1}}}');
 
-    Exec('SELECT /.1', '{2:{2:2,3:3,1:1}}');
-    Exec('SELECT /.1.2', '{2:2,3:3,1:1}');
+    Exec('SELECT /.1', '{2:{3:3,2:2,1:1}}');
+    Exec('SELECT /.1.2', '{3:3,2:2,1:1}');
     Exec('SELECT /.1.2.3', '3');
 
     Exec('DELETE 1');
@@ -1959,10 +2284,10 @@ begin
     Exec('EVAL EXISTS 1/2', 'false');
     Exec('EVAL EXISTS 1', 'false');
 
-    Exec('SELECT /', '{1/2/1:1,1/2/3:3,1/2/2:2}');
+    Exec('SELECT /', '{1/2/3:3,1/2/1:1,1/2/2:2}');
 
-    Exec('EVAL LIST_OF_KEYS /', '{1/2/1:null,1/2/3:null,1/2/2:null}');
-    Exec('EVAL LIST_OF_KEYS / RECURSE', '{1/2/1:null,1/2/3:null,1/2/2:null}');
+    Exec('EVAL LIST_OF_KEYS /', '{1/2/3:null,1/2/1:null,1/2/2:null}');
+    Exec('EVAL LIST_OF_KEYS / RECURSE', '{1/2/3:null,1/2/1:null,1/2/2:null}');
 
     Exec('ITERATE_RECORDS TESTDB:testds2 @a');
     Exec('EVAL @a', 'true');
@@ -1994,6 +2319,97 @@ begin
     Exec('EVAL EXISTS 1/2/1', 'false');
     Exec('EVAL EXISTS 1/2', 'false');
     Exec('EVAL EXISTS 1', 'false');
+  finally
+    P.Free;
+  end;
+end;
+
+procedure Test_Script_Folders_Disk;
+var
+  P : TkvScriptParser;
+  Sys : TkvSystem;
+  MSys : TkvScriptSystem;
+  Ses : TkvScriptSession;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
+    end;
+  end;
+
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Folders_Disk:');
+  {$ENDIF}{$ENDIF}
+
+  Delete_Script_Database;
+
+  P := TkvScriptParser.Create;
+  Sys := TkvSystem.Create(BasePath, 'testsys');
+  MSys := TkvScriptSystem.Create(Sys);
+  try
+    Sys.OpenNew;
+    MSys.OpenNew;
+    Ses := MSys.AddSession;
+
+    Test_Script_Folders(Ses);
+
+    Ses.Close;
+    MSys.Close;
+    Sys.Close;
+
+    MSys.Delete;
+    Sys.Delete;
+  finally
+    MSys.Free;
+    Sys.Free;
+    P.Free;
+  end;
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
+end;
+
+{$IFDEF TestMemSystem}
+procedure Test_Script_Folders_Mem;
+var
+  P : TkvScriptParser;
+  Sys : TkvMemSystem;
+  MSys : TkvScriptSystem;
+  Ses : TkvScriptSession;
+
+  procedure Exec(const S: String; const ValS: String = '');
+  var
+    N : AkvScriptNode;
+  begin
+    N := P.Parse(S);
+    try
+      Check_Script_Result(Ses, N, ValS);
+    finally
+      N.Free;
+    end;
+  end;
+
+begin
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test_Script_Folders_Mem:');
+  {$ENDIF}{$ENDIF}
+
+  P := TkvScriptParser.Create;
+  Sys := TkvMemSystem.Create;
+  MSys := TkvScriptSystem.Create(Sys);
+  try
+    MSys.OpenNew;
+    Ses := MSys.AddSession;
+
+    Test_Script_Folders(Ses);
 
     Ses.Close;
     MSys.Close;
@@ -2004,7 +2420,12 @@ begin
     Sys.Free;
     P.Free;
   end;
+
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln;
+  {$ENDIF}{$ENDIF}
 end;
+{$ENDIF}
 
 procedure Test_Datasys;
 var
@@ -2044,6 +2465,7 @@ begin
   Sys := TkvSystem.Create(BasePath, 'testsys');
   MSys := TkvScriptSystem.Create(Sys);
   try
+    Sys.OpenNew;
     MSys.OpenNew;
 
     Server := TkvDatasysServer.Create(7001);
@@ -2099,7 +2521,7 @@ begin
         Assert(not Client.IterateNext(Handle, Key));
 
         ValA := Client.ListOfKeys('TESTDB', 'testds', '', True);
-        Assert(ValA.AsString = '{2:null,3:null,1:null}');
+        Assert(ValA.AsString = '{3:null,2:null,1:null}');
         ValA.Free;
 
         Assert(not Client.Exists('TESTDB', 'testds', '4'));
@@ -2172,18 +2594,27 @@ procedure Test;
 begin
   Test_HashListHashString;
   Test_HashList;
-  Test_Hash1;
-  Test_Hash2;
   Test_VarWord32;
-  Test_Structs;
-  Test_System(128, 1024);
-  Test_System(1024, 256);
-  Test_System_Folders;
-  Test_System_Backup;
+  Test_DiskHash1;
+  Test_DiskHash2;
+  Test_DiskStructs;
+  Test_DiskSystem(128, 1024);
+  Test_DiskSystem(1024, 256);
+  Test_DiskSystem_Folders;
+  Test_DiskSystem_Backup;
+  {$IFDEF TestMemSystem}
+  Test_MemSystem_Dataset;
+  {$ENDIF}
   Test_Parser;
   Test_Script_Expressions;
-  Test_Script_Database;
-  Test_Script_Folders;
+  Test_Script_Database_Disk;
+  {$IFDEF TestMemSystem}
+  Test_Script_Database_Mem;
+  {$ENDIF}
+  Test_Script_Folders_Disk;
+  {$IFDEF TestMemSystem}
+  Test_Script_Folders_Mem;
+  {$ENDIF}
   Test_Datasys;
 end;
 
