@@ -5,6 +5,7 @@
 { 2018/02/08  0.01  Initial version }
 { 2018/03/02  0.02  Remove LongWord references }
 { 2018/09/27  0.03  AddOrSet }
+{ 2019/09/30  0.04  Modify string hash function }
 
 {$INCLUDE kvInclude.inc}
 
@@ -99,30 +100,38 @@ implementation
 
 { Helpers }
 
+{$IFOPT Q+}{$DEFINE QOn}{$Q-}{$ELSE}{$UNDEF QOn}{$ENDIF}
+{$IFOPT R+}{$DEFINE ROn}{$R-}{$ELSE}{$UNDEF ROn}{$ENDIF}
 function kvhlHashString(const S: String; const CaseSensitive: Boolean = True): Word32;
 var
   H : Word32;
   I : Integer;
-  C : WideChar;
+  C : PChar;
   F : Word32;
+  G : Word32;
 begin
   H := $5A1F7304;
+  C := Pointer(S);
   for I := 1 to Length(S) do
     begin
-      C := S[I];
-      F := Ord(C);
+      F := Ord(C^);
       if not CaseSensitive then
         if (F >= Ord('a')) and (F <= Ord('z')) then
           F := F - 32;
-      F := F xor Word32(UInt64(F) shl 7) xor
-                 Word32(UInt64(F) shl 14) xor
-                 Word32(UInt64(F) shl 21) xor
-                 Word32(UInt64(F) shl 28);
+      G := Word32(F * 69069 + 1);
+      F := F xor
+           Word32(F shl 7) xor
+           Word32(G shl 14) xor
+           Word32(F shl 21) xor
+           Word32(G shl 28);
       H := H xor F;
-      H := Word32((UInt64(H) shl 5) + (H shr 5));
+      H := Word32(Word32(H shl 5) or (H shr 27));
+      Inc(C);
     end;
   Result := H;
 end;
+{$IFDEF QOn}{$Q+}{$ENDIF}
+{$IFDEF ROn}{$R+}{$ENDIF}
 
 function SameKey(const S1, S2: String; const CaseSensitive: Boolean): Boolean;
 begin
