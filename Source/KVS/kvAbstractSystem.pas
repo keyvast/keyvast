@@ -5,6 +5,8 @@
 { 2019/04/19  0.01  Initial interface. }
 { 2019/09/30  0.02  Minimal interface. }
 { 2019/09/30  0.03  Rename to kvAbstractSystem. }
+{ 2019/10/05  0.04  Iterate records with Timestamp filter. }
+{ 2019/10/05  0.05  Iterate records non recursive. }
 
 {$INCLUDE kvInclude.inc}
 
@@ -51,7 +53,9 @@ type
     procedure DeleteFolderRecords(const APath: String); virtual; abstract;
 
     function  ListOfKeys(const AKeyPath: String; const ARecurse: Boolean): TkvDictionaryValue; virtual; abstract;
-    function  IterateRecords(const APath: String; out AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
+    function  IterateRecords(const APath: String; out AIterator: AkvDatasetIterator;
+              const ARecurse: Boolean = True;
+              const AMinTimestamp: UInt64 = 0): Boolean; virtual; abstract;
     function  IterateFolders(const APath: String; out AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
     function  IterateNextRecord(var AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
     function  IteratorHasRecord(const AIterator: AkvDatasetIterator): Boolean; virtual; abstract;

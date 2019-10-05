@@ -124,7 +124,9 @@ type
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: AkvDatasetIterator): Boolean; override;
+              out Iterator: AkvDatasetIterator;
+              const ARecurse: Boolean;
+              const AMinTimestamp: UInt64): Boolean; override;
     function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: AkvDatasetIterator): Boolean; override;
@@ -308,7 +310,9 @@ type
     function  IterateRecords(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: AkvDatasetIterator): Boolean;
+              out Iterator: AkvDatasetIterator;
+              const ARecurse: Boolean;
+              const AMinTimestamp: UInt64): Boolean;
     function  IterateFolders(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
               const Path: String;
@@ -614,9 +618,11 @@ begin
 end;
 
 function TkvScriptSession.IterateRecords(const DatabaseName, DatasetName: String;
-         const Path: String; out Iterator: AkvDatasetIterator): Boolean;
+         const Path: String; out Iterator: AkvDatasetIterator;
+         const ARecurse: Boolean;
+         const AMinTimestamp: UInt64): Boolean;
 begin
-  Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path, Iterator);
+  Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path, Iterator, ARecurse, AMinTimestamp);
 end;
 
 function TkvScriptSession.IterateFolders(const DatabaseName, DatasetName: String;
@@ -1468,11 +1474,13 @@ end;
 function TkvScriptSystem.IterateRecords(const Session: TkvScriptSession;
          const DatabaseName, DatasetName: String;
          const Path: String;
-         out Iterator: AkvDatasetIterator): Boolean;
+         out Iterator: AkvDatasetIterator;
+         const ARecurse: Boolean;
+         const AMinTimestamp: UInt64): Boolean;
 begin
   ExecLock;
   try
-    Result := FSystem.IterateRecords(DatabaseName, DatasetName, Path, Iterator);
+    Result := FSystem.IterateRecords(DatabaseName, DatasetName, Path, Iterator, ARecurse, AMinTimestamp);
   finally
     ExecUnlock;
   end;

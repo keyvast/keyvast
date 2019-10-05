@@ -75,7 +75,9 @@ type
 
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;
-              out Iterator: AkvDatasetIterator): Boolean; virtual; abstract;
+              out Iterator: AkvDatasetIterator;
+              const ARecurse: Boolean;
+              const AMinTimestamp: UInt64): Boolean; virtual; abstract;
     function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: AkvDatasetIterator): Boolean; virtual; abstract;

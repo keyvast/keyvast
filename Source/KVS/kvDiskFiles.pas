@@ -17,6 +17,7 @@
 { 2019/09/30  0.12  Rename to kvDiskFiles }
 { 2019/10/04  0.13  Increase Hash file default cache entries }
 { 2019/10/04  0.14  Hash file Timestamp functions }
+{ 2019/10/05  0.15  File write optimisation in AllocateSlotRecords. }
 
 {$INCLUDE kvInclude.inc}
 
@@ -983,13 +984,36 @@ begin
 end;
 
 function TkvHashFile.AllocateSlotRecords: Word64;
+
 var
   LvlSlots : Word32;
+  EmpRec : TkvHashFileRecord;
+
+  procedure AddToCache(const StartIdx: Word64);
+  var
+    I : Integer;
+    Idx : Word64;
+  begin
+    for I := 0 to LvlSlots - 1 do
+      begin
+        Idx := StartIdx + Word32(I);
+        if Idx < FCacheEntries then
+          begin
+            FCacheRec[Idx] := EmpRec;
+            FCacheValid[Idx] := True;
+          end
+        else
+          break;
+      end;
+  end;
+
+var
   RecIdx : Word64;
   RecCnt : Word64;
   I : Integer;
-  EmpRec : TkvHashFileRecord;
+  EmpRecL : packed array[0..KV_HashFile_LevelSlotCount - 1] of TkvHashFileRecord;
   Rec : TkvHashFileRecord;
+
 begin
   LvlSlots := FFileHeader.LevelSlotCount;
 
@@ -1003,8 +1027,14 @@ begin
   if RecIdx <> KV_HashFile_InvalidIndex then
     begin
       LoadRecord(RecIdx, Rec);
+
+      // write all records in one write
       for I := 0 to LvlSlots - 1 do
-        SaveRecord(RecIdx + Word32(I), EmpRec);
+        EmpRecL[I] := EmpRec;
+      SeekRecord(RecIdx);
+      FFile.WriteBuffer(EmpRecL, LvlSlots * KV_HashFile_RecordSize);
+      AddToCache(RecIdx);
+
       FFileHeader.FirstDeletedIndex := Rec.ChildSlotRecordIndex;
       HeaderModified;
       Result := RecIdx;
@@ -1014,8 +1044,13 @@ begin
   RecCnt := FFileHeader.RecordCount;
   FFileHeader.RecordCount := RecCnt + LvlSlots;
   try
+    // more efficient to write file size growth as one write instead
+    // of first setting file size and/or multiple writes.
     for I := 0 to LvlSlots - 1 do
-      SaveRecord(RecCnt + Word32(I), EmpRec);
+      EmpRecL[I] := EmpRec;
+    SeekRecord(RecCnt);
+    FFile.WriteBuffer(EmpRecL, LvlSlots * KV_HashFile_RecordSize);
+    AddToCache(RecCnt);
   except
     FFileHeader.RecordCount := RecCnt;
     raise;

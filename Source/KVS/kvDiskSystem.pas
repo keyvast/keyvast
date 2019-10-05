@@ -29,6 +29,10 @@
 { 2019/09/30  0.24  Objects inherit from base objects }
 { 2019/10/03  0.25  Rename to kvDiskSystem }
 { 2019/10/04  0.26  Dataset sets record Timestamp on change }
+{ 2019/10/05  0.27  Iterate records with Timestamp filter. }
+{ 2019/10/05  0.28  Iterate records non recursive. }
+{ 2019/10/05  0.29  Release ParentRecords to DeletedSlots when deleting folder. }
+{ 2019/10/05  0.30  Update hash collision children's level hash when hash collision moved down in tree. }
 
 {$INCLUDE kvInclude.inc}
 
@@ -71,6 +75,7 @@ type
 
   TkvDatasetIteratorType = (
       ditRecordsRecursive,
+      ditRecordsNonRecursive,
       ditFoldersNonRecursive
     );
 
@@ -81,6 +86,7 @@ type
     FDatasetName  : String;
     FPath         : String;
     FDataset      : TkvDataset;
+    FMinTimestamp : UInt64;
     FStackLen     : Integer;
     FStack        : array of TkvDatasetIteratorStackEntry;
     FHashRec      : TkvHashFileRecord;
@@ -185,7 +191,8 @@ type
     function  SetNextIteratorRecord(var AIterator: TkvDatasetIterator): Boolean;
     function  IterateFirst(const AIteratorType: TkvDatasetIteratorType;
               const APath: String;
-              out AIterator: AkvDatasetIterator): Boolean;
+              out AIterator: AkvDatasetIterator;
+              const AMinTimestamp: UInt64): Boolean;
 
   protected
     function  GetName: String; override;
@@ -234,7 +241,9 @@ type
     procedure DeleteFolderRecords(const APath: String); override;
 
     function  ListOfKeys(const AKeyPath: String; const ARecurse: Boolean): TkvDictionaryValue; override;
-    function  IterateRecords(const APath: String; out AIterator: AkvDatasetIterator): Boolean; override;
+    function  IterateRecords(const APath: String; out AIterator: AkvDatasetIterator;
+              const ARecurse: Boolean = True;
+              const AMinTimestamp: UInt64 = 0): Boolean; override;
     function  IterateFolders(const APath: String; out AIterator: AkvDatasetIterator): Boolean; override;
     function  IterateNextRecord(var AIterator: AkvDatasetIterator): Boolean; override;
     function  IteratorHasRecord(const AIterator: AkvDatasetIterator): Boolean; override;
@@ -465,7 +474,9 @@ type
               const AValBlobRecordSize: Word32 = KV_Dataset_ValBlob_DefaultRecordSize;
               const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries): TkvDataset;
 
-    function  Backup(const ABackupPath: String): TkvSystem;
+    function  Backup(
+              const ABackupPath: String;
+              const AHashFileCacheEntries: Word32 = KV_HashFile_DefaultCacheEntries): TkvSystem;
   end;
 
 
@@ -603,26 +614,24 @@ var
   BakHdr : PkvHashFileHeader;
   DsIt : AkvDatasetIterator;
   Key : String;
-  Timestamp : Int64;
+  Timestamp : UInt64;
   Val : AkvValue;
 begin
   Hdr := FHashFile.GetHeader;
   BakHdr := ADataset.FHashFile.GetHeader;
   BakHdr^.UniqueIdCounter := Hdr.UniqueIdCounter;
+  BakHdr^.TimestampCounter := Hdr.TimestampCounter;
   ADataset.FHashFile.HeaderModified;
-  if IterateRecords('', DsIt) then
+  if IterateRecords('', DsIt, True, 0) then
     repeat
       Key := IteratorGetKey(DsIt);
       Val := IteratorGetValue(DsIt);
       try
-        ////Writeln(Key, '=', Copy(Val.AsString, 1, 20)); ////
         Timestamp := IteratorGetTimestamp(DsIt);
-        ////try
+        if (Timestamp = 0) or (Timestamp > Hdr.TimestampCounter) then
+          // Upgrade to counter based timestamp
+          Timestamp := Hdr.TimestampCounter;
         ADataset.InternalAddKeyValue(Key, Val, Timestamp);
-        ////except
-          ////on E : Exception do
-            ////Writeln(E.ClassName, ':', E.Message, ':', Key); ////
-        ////end;
       finally
         FreeAndNil(Val);
       end;
@@ -804,6 +813,10 @@ var
   Slt2 : Word32;
   ParentHashRec : TkvHashFileRecord;
   NewHashRec : TkvHashFileRecord;
+  ColBaseIdx : Word64;
+  ColIdx : Word64;
+  ColRec : TkvHashFileRecord;
+  I : Integer;
 begin
   if ACollisionLevel > KV_HashFile_MaxSlotCollisionCount then
     raise EkvDiskObject.Create('Hash failure: Too many slot collisions');
@@ -834,13 +847,30 @@ begin
     end
   else
     begin
+      // Save existing record
       FHashFile.SaveRecord(BaseIdx + Slt2, HashRec);
-
+      if HashRec.RecordType = hfrtKeyValueWithHashCollision then
+        begin
+          // Update all hash collision children's level hash with parent's level hash
+          ColBaseIdx := HashRec.ChildSlotRecordIndex;
+          for I := 0 to KV_HashFile_LevelSlotCount - 1 do
+            begin
+              ColIdx := ColBaseIdx + Word32(I);
+              FHashFile.LoadRecord(ColIdx, ColRec);
+              if ColRec.RecordType in [hfrtKeyValue] then
+                begin
+                  ColRec.KeyHash := HashRec.KeyHash;
+                  FHashFile.SaveRecord(ColIdx, ColRec);
+                end;
+            end;
+        end;
+      // Save new record
       HashRecInitKeyValue(NewHashRec, AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx);
       NewHashRec.Timestamp := ATimestampNow;
       FHashFile.SaveRecord(BaseIdx + Slt1, NewHashRec);
     end;
 
+  // Save parent record
   FHashFile.SaveRecord(HashRecIdx, ParentHashRec);
 end;
 
@@ -1790,13 +1820,23 @@ var
   SltI : Word32;
   RecI : Word64;
   ChildHashRec : TkvHashFileRecord;
+  ChildRecI : Word64;
 begin
   for SltI := 0 to KV_HashFile_LevelSlotCount - 1 do
     begin
       RecI := BaseIndex + SltI;
       FHashFile.LoadRecord(RecI, ChildHashRec);
-      if ChildHashRec.RecordType in [hfrtKeyValue, hfrtKeyValueWithHashCollision] then
-        InternalDeleteRecord(RecI, ChildHashRec);
+      case ChildHashRec.RecordType of
+        hfrtKeyValue,
+        hfrtKeyValueWithHashCollision : InternalDeleteRecord(RecI, ChildHashRec);
+        hfrtParentSlot :
+          begin
+            ChildRecI := ChildHashRec.ChildSlotRecordIndex;
+            Assert(ChildRecI <> KV_HashFile_InvalidIndex);
+            InternalDeleteChildren(ChildRecI);
+            FHashFile.AddDeletedSlots(ChildRecI);
+          end;
+      end;
     end;
 end;
 
@@ -1805,6 +1845,7 @@ procedure TkvDataset.InternalDeleteRecord(const HashRecIdx: Word64;
 var
   SltI : Word32;
   RecI : Word64;
+  ChildRecI : Word64;
   ChildHashRec : TkvHashFileRecord;
   NewHashRec : TkvHashFileRecord;
   R : Boolean;
@@ -1830,26 +1871,28 @@ begin
         // Replace entry with first non-empty child entry and
         // set that child entry empty
         R := False;
+        ChildRecI := HashRec.ChildSlotRecordIndex;
         for SltI := 0 to KV_HashFile_LevelSlotCount - 1 do
           begin
-            RecI := HashRec.ChildSlotRecordIndex + SltI;
+            RecI := ChildRecI + SltI;
             FHashFile.LoadRecord(RecI, ChildHashRec);
             if ChildHashRec.RecordType = hfrtKeyValue then
               begin
                 NewHashRec := ChildHashRec;
                 NewHashRec.RecordType := hfrtKeyValueWithHashCollision;
-                NewHashRec.ChildSlotRecordIndex := HashRec.ChildSlotRecordIndex;
-                HashRec := NewHashRec;
+                NewHashRec.ChildSlotRecordIndex := ChildRecI;
 
                 ChildHashRec.RecordType := hfrtEmpty;
                 FHashFile.SaveRecord(RecI, ChildHashRec);
+
+                HashRec := NewHashRec;
                 R := True;
                 break;
               end;
           end;
         if not R then // All slots empty
           begin
-            FHashFile.AddDeletedSlots(HashRec.ChildSlotRecordIndex);
+            FHashFile.AddDeletedSlots(ChildRecI);
             HashRec.ChildSlotRecordIndex := KV_HashFile_InvalidIndex;
             HashRec.RecordType := hfrtEmpty;
           end;
@@ -1948,23 +1991,43 @@ begin
       case AIterator.FHashRec.RecordType of
         hfrtKeyValue :
           case AIterator.FIteratorType of
+            ditRecordsNonRecursive,
             ditRecordsRecursive :
               if AIterator.FHashRec.ValueType = hfrvtFolder then
-                begin
-                  // Recurse down into folder slots
-                  Inc(E^.SlotIdx);
-                  Inc(AIterator.FStackLen);
-                  SetLength(AIterator.FStack, AIterator.FStackLen);
-                  E := @AIterator.FStack[AIterator.FStackLen - 1];
-                  E^.BaseRecIdx := AIterator.FHashRec.ValueFolderBaseIndex;
-                  E^.SlotIdx := 0;
-                  E^.FolderName := HashRecToKey(AIterator.FHashRec);
-                end
+                if AIterator.FIteratorType = ditRecordsRecursive then
+                  begin
+                    // Recurse down into folder slots
+                    Inc(E^.SlotIdx);
+                    Inc(AIterator.FStackLen);
+                    SetLength(AIterator.FStack, AIterator.FStackLen);
+                    E := @AIterator.FStack[AIterator.FStackLen - 1];
+                    E^.BaseRecIdx := AIterator.FHashRec.ValueFolderBaseIndex;
+                    E^.SlotIdx := 0;
+                    E^.FolderName := HashRecToKey(AIterator.FHashRec);
+                  end
+                else
+                  begin
+                    // Skip folder
+                    Inc(E^.SlotIdx);
+                    if E^.SlotIdx = KV_HashFile_LevelSlotCount then
+                      R := True;
+                  end
               else
                 begin
                   // Found key/value entry
-                  Result := True;
-                  exit;
+                  // Check Timestamp filter
+                  if (AIterator.FMinTimestamp > 0) and (AIterator.FHashRec.Timestamp < AIterator.FMinTimestamp) then
+                    begin
+                      // Move to next slot
+                      Inc(E^.SlotIdx);
+                      if E^.SlotIdx = KV_HashFile_LevelSlotCount then
+                        R := True;
+                    end
+                  else
+                    begin
+                      Result := True;
+                      exit;
+                    end;
                 end;
             ditFoldersNonRecursive :
               if AIterator.FHashRec.ValueType = hfrvtFolder then
@@ -2021,7 +2084,8 @@ end;
 
 function TkvDataset.IterateFirst(const AIteratorType: TkvDatasetIteratorType;
          const APath: String;
-         out AIterator: AkvDatasetIterator): Boolean;
+         out AIterator: AkvDatasetIterator;
+         const AMinTimestamp: UInt64): Boolean;
 var
   It : TkvDatasetIterator;
   E : PkvDatasetIteratorStackEntry;
@@ -2042,11 +2106,12 @@ begin
   It := TkvDatasetIterator.Create;
   try
     It.FIteratorType := AIteratorType;
-    It.FPath := APath;
-    It.FDataset := self;
-    It.FStackLen := 1;
     It.FDatabaseName := FDatabaseName;
     It.FDatasetName := FName;
+    It.FPath := APath;
+    It.FDataset := self;
+    It.FMinTimestamp := AMinTimestamp;
+    It.FStackLen := 1;
     SetLength(It.FStack, 1);
     E := @It.FStack[0];
     E^.BaseRecIdx := BaseRecIdx;
@@ -2062,14 +2127,22 @@ begin
 end;
 
 function TkvDataset.IterateRecords(const APath: String;
-         out AIterator: AkvDatasetIterator): Boolean;
+         out AIterator: AkvDatasetIterator;
+         const ARecurse: Boolean;
+         const AMinTimestamp: UInt64): Boolean;
+var
+  ItTy : TkvDatasetIteratorType;
 begin
-  Result := IterateFirst(ditRecordsRecursive, APath, AIterator);
+  if ARecurse then
+    ItTy := ditRecordsRecursive
+  else
+    ItTy := ditRecordsNonRecursive;
+  Result := IterateFirst(ItTy, APath, AIterator, AMinTimestamp);
 end;
 
 function TkvDataset.IterateFolders(const APath: String; out AIterator: AkvDatasetIterator): Boolean;
 begin
-  Result := IterateFirst(ditFoldersNonRecursive, APath, AIterator);
+  Result := IterateFirst(ditFoldersNonRecursive, APath, AIterator, 0);
 end;
 
 function TkvDataset.IterateNextRecord(var AIterator: AkvDatasetIterator): Boolean;
@@ -2413,7 +2486,7 @@ end;
 
 procedure TkvDatabase.Open(const AHashFileCacheEntries: Word32);
 begin
-  FDatasetList.Open;
+  FDatasetList.Open(AHashFileCacheEntries);
 end;
 
 procedure TkvDatabase.Close;
@@ -2889,7 +2962,9 @@ begin
   Result := Ds;
 end;
 
-function TkvSystem.Backup(const ABackupPath: String): TkvSystem;
+function TkvSystem.Backup(
+         const ABackupPath: String;
+         const AHashFileCacheEntries: Word32): TkvSystem;
 var
   BakSys : TkvSystem;
   SysHdr : PkvSystemFileHeader;
@@ -2924,7 +2999,8 @@ begin
                   Ds.Name,
                   Ds.UseFolders,
                   Ds.KeyBlobRecordSize,
-                  Ds.ValBlobRecordSize);
+                  Ds.ValBlobRecordSize,
+                  AHashFileCacheEntries);
               Ds.BackupTo(BakDs);
             until not Db.IterateNextDataset(DsIt);
         until not FDatabaseList.IterateNext(DbIt);

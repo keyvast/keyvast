@@ -594,7 +594,7 @@ begin
   New(Iter);
   try
     Iter.Magic := DatasysServer_IteratorMagic;
-    IterR := Session.IterateRecords(DbS, DsS, PathS, Iter^.Iter);
+    IterR := Session.IterateRecords(DbS, DsS, PathS, Iter^.Iter, True, 0);
   except
     Dispose(Iter);
     raise;

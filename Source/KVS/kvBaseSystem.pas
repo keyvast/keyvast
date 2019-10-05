@@ -98,7 +98,9 @@ type
               const ARecurse: Boolean): AkvValue;
     function  IterateRecords(const ADatabaseName, ADatasetName: String;
               const APath: String;
-              out AIterator: AkvDatasetIterator): Boolean;
+              out AIterator: AkvDatasetIterator;
+              const ARecurse: Boolean;
+              const AMinTimestamp: UInt64): Boolean;
     function  IterateFolders(const ADatabaseName, ADatasetName: String;
               const APath: String;
               out AIterator: AkvDatasetIterator): Boolean;
@@ -696,9 +698,11 @@ end;
 
 function AkvBaseSystem.IterateRecords(const ADatabaseName, ADatasetName: String;
          const APath: String;
-         out AIterator: AkvDatasetIterator): Boolean;
+         out AIterator: AkvDatasetIterator;
+         const ARecurse: Boolean;
+         const AMinTimestamp: UInt64): Boolean;
 begin
-  Result := RequireDatasetByName(ADatabaseName, ADatasetName).IterateRecords(APath, AIterator);
+  Result := RequireDatasetByName(ADatabaseName, ADatasetName).IterateRecords(APath, AIterator, ARecurse, AMinTimestamp);
 end;
 
 function AkvBaseSystem.IterateFolders(const ADatabaseName, ADatasetName: String;

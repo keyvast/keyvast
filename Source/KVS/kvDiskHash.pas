@@ -29,6 +29,8 @@ uses
 type
   Word32 = FixedUInt;
 
+{$IFOPT Q+}{$DEFINE QOn}{$Q-}{$ELSE}{$UNDEF QOn}{$ENDIF}
+{$IFOPT R+}{$DEFINE ROn}{$R-}{$ELSE}{$UNDEF ROn}{$ENDIF}
 const
   RC2Table: array[Byte] of Byte = (
     $D9, $78, $F9, $C4, $19, $DD, $B5, $ED, $28, $E9, $FD, $79, $4A, $A0, $D8, $9D,
@@ -95,14 +97,14 @@ begin
       H1 := Word32(H shr 32);
       H2 := Word32(H and $FFFFFFFF);
 
-      H1 := Word32(UInt64(H1) + Word32(I) + Word32(D));
-      H2 := Word32(UInt64(H2) + Word32(I) + Word32(L));
+      H1 := Word32(H1 + Word32(I) + Word32(D));
+      H2 := Word32(H2 + Word32(I) + Word32(L));
 
-      H1 := Word32(UInt64(H1) * 73 + 1);
-      H2 := Word32(UInt64(H2) * 5 + 79);
+      H1 := Word32(H1 * 73 + 1);
+      H2 := Word32(H2 * 5 + 79);
 
-      T1 := Word32(UInt64(H1) shl 11) xor (H1 shr 5) xor Word32(UInt64(H2) shl 17) xor (H2 shr 19);
-      T2 := Word32(UInt64(H2) shl 7)  xor (H2 shr 3) xor Word32(UInt64(H1) shl 15) xor (H1 shr 17);
+      T1 := Word32(H1 shl 11) xor (H1 shr 5) xor Word32(H2 shl 17) xor (H2 shr 19);
+      T2 := Word32(H2 shl 7)  xor (H2 shr 3) xor Word32(H1 shl 15) xor (H1 shr 17);
 
       H := (UInt64(T1) shl 32) or T2;
     end;
@@ -118,6 +120,8 @@ begin
   H := UInt64(H shl 17) or (H shr 47);
   Result := H;
 end;
+{$IFDEF QOn}{$Q+}{$ENDIF}
+{$IFDEF ROn}{$R+}{$ENDIF}
 
 
 
