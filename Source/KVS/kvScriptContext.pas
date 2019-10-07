@@ -64,8 +64,6 @@ type
               const Value: AkvValue); virtual; abstract;
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); virtual; abstract;
     function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; virtual; abstract;
-    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-              const Recurse: Boolean): AkvValue; virtual; abstract;
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; virtual; abstract;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); virtual; abstract;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String;
@@ -73,10 +71,14 @@ type
     procedure AppendRecord(const DatabaseName, DatasetName, Key: String;
               const Value: AkvValue); virtual; abstract;
 
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
+              const Recurse: Boolean;
+              const IncludeRecordTimestamp: Boolean): AkvValue; virtual; abstract;
     function  IterateRecords(const DatabaseName, DatasetName: String;
               const Path: String;
               out Iterator: AkvDatasetIterator;
               const ARecurse: Boolean;
+              const AIncludeFolders: Boolean;
               const AMinTimestamp: UInt64): Boolean; virtual; abstract;
     function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;

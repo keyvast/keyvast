@@ -7,6 +7,9 @@
 { 2019/09/30  0.03  Rename to kvAbstractSystem. }
 { 2019/10/05  0.04  Iterate records with Timestamp filter. }
 { 2019/10/05  0.05  Iterate records non recursive. }
+{ 2019/10/05  0.06  Iterate records optionally include folders. }
+{ 2019/10/05  0.07  ListOfKeys optionally return record timestamps. }
+{ 2019/10/05  0.08  Dataset CopyFrom. }
 
 {$INCLUDE kvInclude.inc}
 
@@ -38,6 +41,9 @@ type
     property  Name: String read GetName;
     property  UseFolders: Boolean read GetUseFolders;
 
+    function  GetTimestamp: UInt64; virtual; abstract;
+
+    function  GetUniqueId: UInt64; virtual; abstract;
     function  AllocateUniqueId: UInt64; virtual; abstract;
 
     function  RecordExists(const AKey: String): Boolean; virtual; abstract;
@@ -52,16 +58,25 @@ type
     procedure DeleteRecord(const AKey: String); virtual; abstract;
     procedure DeleteFolderRecords(const APath: String); virtual; abstract;
 
-    function  ListOfKeys(const AKeyPath: String; const ARecurse: Boolean): TkvDictionaryValue; virtual; abstract;
-    function  IterateRecords(const APath: String; out AIterator: AkvDatasetIterator;
+    function  ListOfKeys(
+              const AKeyPath: String;
+              const ARecurse: Boolean;
+              const AIncludeRecordTimestamp: Boolean = False): TkvDictionaryValue; virtual; abstract;
+    function  IterateRecords(
+              const APath: String;
+              out AIterator: AkvDatasetIterator;
               const ARecurse: Boolean = True;
+              const AIncludeFolders: Boolean = False;
               const AMinTimestamp: UInt64 = 0): Boolean; virtual; abstract;
     function  IterateFolders(const APath: String; out AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
     function  IterateNextRecord(var AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
     function  IteratorHasRecord(const AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
+    function  IteratorIsFolder(const AIterator: AkvDatasetIterator): Boolean; virtual; abstract;
     function  IteratorGetKey(const AIterator: AkvDatasetIterator): String; virtual; abstract;
     function  IteratorGetValue(const AIterator: AkvDatasetIterator): AkvValue; virtual; abstract;
     function  IteratorGetTimestamp(const AIterator: AkvDatasetIterator): UInt64; virtual; abstract;
+
+    procedure CopyFrom(const ADataset: AkvDataset); virtual; abstract;
   end;
 
 

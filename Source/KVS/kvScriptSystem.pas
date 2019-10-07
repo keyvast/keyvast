@@ -114,7 +114,8 @@ type
     procedure MakePath(const DatabaseName, DatasetName, KeyPath: String); override;
     function  GetRecord(const DatabaseName, DatasetName, Key: String): AkvValue; override;
     function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-              const Recurse: Boolean): AkvValue; override;
+              const Recurse: Boolean;
+              const IncludeRecordTimestamp: Boolean): AkvValue; override;
     function  RecordExists(const DatabaseName, DatasetName, Key: String): Boolean; override;
     procedure DeleteRecord(const DatabaseName, DatasetName, Key: String); override;
     procedure SetRecord(const DatabaseName, DatasetName, Key: String;
@@ -126,6 +127,7 @@ type
               const Path: String;
               out Iterator: AkvDatasetIterator;
               const ARecurse: Boolean;
+              const AIncludeFolders: Boolean;
               const AMinTimestamp: UInt64): Boolean; override;
     function  IterateFolders(const DatabaseName, DatasetName: String;
               const Path: String;
@@ -285,7 +287,8 @@ type
 
     function  ListOfKeys(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, KeyPath: String;
-              const Recurse: Boolean): AkvValue;
+              const Recurse: Boolean;
+              const IncludeRecordTimestamp: Boolean): AkvValue;
 
     procedure DeleteRecord(const Session: TkvScriptSession;
               const DatabaseName, DatasetName, Key: String); overload;
@@ -312,6 +315,7 @@ type
               const Path: String;
               out Iterator: AkvDatasetIterator;
               const ARecurse: Boolean;
+              const AIncludeFolders: Boolean;
               const AMinTimestamp: UInt64): Boolean;
     function  IterateFolders(const Session: TkvScriptSession;
               const DatabaseName, DatasetName: String;
@@ -563,12 +567,13 @@ begin
 end;
 
 function TkvScriptSession.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
-         const Recurse: Boolean): AkvValue;
+         const Recurse: Boolean;
+         const IncludeRecordTimestamp: Boolean): AkvValue;
 begin
   Result := FSystem.ListOfKeys(self,
       UsedDatabaseName(DatabaseName),
       UsedDatasetName(DatasetName),
-      KeyPath, Recurse);
+      KeyPath, Recurse, IncludeRecordTimestamp);
 end;
 
 function TkvScriptSession.RecordExists(const DatabaseName, DatasetName, Key: String): Boolean;
@@ -620,9 +625,11 @@ end;
 function TkvScriptSession.IterateRecords(const DatabaseName, DatasetName: String;
          const Path: String; out Iterator: AkvDatasetIterator;
          const ARecurse: Boolean;
+         const AIncludeFolders: Boolean;
          const AMinTimestamp: UInt64): Boolean;
 begin
-  Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path, Iterator, ARecurse, AMinTimestamp);
+  Result := FSystem.IterateRecords(self, DatabaseName, DatasetName, Path,
+      Iterator, ARecurse, AIncludeFolders, AMinTimestamp);
 end;
 
 function TkvScriptSession.IterateFolders(const DatabaseName, DatasetName: String;
@@ -1391,11 +1398,13 @@ end;
 
 function TkvScriptSystem.ListOfKeys(const Session: TkvScriptSession;
          const DatabaseName, DatasetName, KeyPath: String;
-         const Recurse: Boolean): AkvValue;
+         const Recurse: Boolean;
+         const IncludeRecordTimestamp: Boolean): AkvValue;
 begin
   ExecLock;
   try
-    Result := FSystem.ListOfKeys(DatabaseName, DatasetName, KeyPath, Recurse);
+    Result := FSystem.ListOfKeys(DatabaseName, DatasetName, KeyPath,
+        Recurse, IncludeRecordTimestamp);
   finally
     ExecUnlock;
   end;
@@ -1476,11 +1485,13 @@ function TkvScriptSystem.IterateRecords(const Session: TkvScriptSession;
          const Path: String;
          out Iterator: AkvDatasetIterator;
          const ARecurse: Boolean;
+         const AIncludeFolders: Boolean;
          const AMinTimestamp: UInt64): Boolean;
 begin
   ExecLock;
   try
-    Result := FSystem.IterateRecords(DatabaseName, DatasetName, Path, Iterator, ARecurse, AMinTimestamp);
+    Result := FSystem.IterateRecords(DatabaseName, DatasetName, Path,
+        Iterator, ARecurse, AIncludeFolders, AMinTimestamp);
   finally
     ExecUnlock;
   end;

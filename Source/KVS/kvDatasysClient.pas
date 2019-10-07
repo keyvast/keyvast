@@ -14,7 +14,9 @@ interface
 uses
   SysUtils,
   SyncObjs,
+
   kvValues,
+
   IdGlobal,
   IdTCPClient;
 
@@ -66,6 +68,7 @@ type
     function  ExecKqlText(const KqlText: String): AkvValue;
 
     procedure UseDataset(const DatabaseName, DatasetName: String);
+
     procedure Insert(const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
     procedure Update(const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
     procedure Append(const DatabaseName, DatasetName, Key: String; const Value: AkvValue);
@@ -73,7 +76,10 @@ type
     function  Select(const DatabaseName, DatasetName, Key: String): AkvValue;
     function  Exists(const DatabaseName, DatasetName, Key: String): Boolean;
     procedure MkPath(const DatabaseName, DatasetName, Key: String);
-    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue;
+
+    function  ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
+              const Recurse: Boolean;
+              const IncludeRecordTimestamp: Boolean): AkvValue;
 
     function  Iterate(const DatabaseName, DatasetName, Path: String;
               var Handle: Int64; var Key: String): Boolean;
@@ -501,7 +507,9 @@ begin
   end;
 end;
 
-function TkvDatasysClient.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String; const Recurse: Boolean): AkvValue;
+function TkvDatasysClient.ListOfKeys(const DatabaseName, DatasetName, KeyPath: String;
+         const Recurse: Boolean;
+         const IncludeRecordTimestamp: Boolean): AkvValue;
 var
   Req : TkvDictionaryValue;
   Resp : TkvDictionaryValue;
@@ -514,6 +522,7 @@ begin
     Req.AddString('ds', DatasetName);
     Req.AddString('key', KeyPath);
     Req.AddBoolean('recurse', Recurse);
+    Req.AddBoolean('rectimestamps', IncludeRecordTimestamp);
     Resp := ExecBinCommand(Req);
   finally
     Req.Free;

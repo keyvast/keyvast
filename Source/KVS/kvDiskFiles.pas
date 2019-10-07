@@ -223,6 +223,8 @@ type
     procedure UpdateHeader;
 
     function  AllocateUniqueId: UInt64;
+
+    function  GetTimestamp: UInt64;
     function  GetNextTimestamp: UInt64;
     procedure UpdateTimestamp(const Timestamp: UInt64);
 
@@ -907,6 +909,11 @@ begin
   FFileHeader.UniqueIdCounter := C;
   HeaderModified;
   Result := C;
+end;
+
+function TkvHashFile.GetTimestamp: UInt64;
+begin
+  Result := FFileHeader.TimestampCounter;
 end;
 
 function TkvHashFile.GetNextTimestamp: UInt64;

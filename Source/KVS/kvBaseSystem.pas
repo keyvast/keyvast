@@ -95,11 +95,13 @@ type
     procedure DeleteRecord(const ADatabaseName, ADatasetName, AKey: String); overload;
 
     function  ListOfKeys(const ADatabaseName, ADatasetName, AKeyPath: String;
-              const ARecurse: Boolean): AkvValue;
+              const ARecurse: Boolean;
+              const AIncludeRecordTimestamp: Boolean): AkvValue;
     function  IterateRecords(const ADatabaseName, ADatasetName: String;
               const APath: String;
               out AIterator: AkvDatasetIterator;
               const ARecurse: Boolean;
+              const AIncludeFolders: Boolean;
               const AMinTimestamp: UInt64): Boolean;
     function  IterateFolders(const ADatabaseName, ADatasetName: String;
               const APath: String;
@@ -691,18 +693,24 @@ begin
 end;
 
 function AkvBaseSystem.ListOfKeys(const ADatabaseName, ADatasetName, AKeyPath: String;
-         const ARecurse: Boolean): AkvValue;
+         const ARecurse: Boolean;
+         const AIncludeRecordTimestamp: Boolean): AkvValue;
 begin
-  Result := RequireDatasetByName(ADatabaseName, ADatasetName).ListOfKeys(AKeyPath, ARecurse);
+  Result := RequireDatasetByName(ADatabaseName, ADatasetName).ListOfKeys(
+      AKeyPath, ARecurse, AIncludeRecordTimestamp);
 end;
 
 function AkvBaseSystem.IterateRecords(const ADatabaseName, ADatasetName: String;
          const APath: String;
          out AIterator: AkvDatasetIterator;
          const ARecurse: Boolean;
+         const AIncludeFolders: Boolean;
          const AMinTimestamp: UInt64): Boolean;
 begin
-  Result := RequireDatasetByName(ADatabaseName, ADatasetName).IterateRecords(APath, AIterator, ARecurse, AMinTimestamp);
+  Result := RequireDatasetByName(ADatabaseName, ADatasetName).IterateRecords(
+      APath, AIterator,
+      ARecurse, AIncludeFolders,
+      AMinTimestamp);
 end;
 
 function AkvBaseSystem.IterateFolders(const ADatabaseName, ADatasetName: String;

@@ -3631,7 +3631,7 @@ begin
   DbN := kvResolveVariableKey(Context, FDatabaseName);
   DsN := kvResolveVariableKey(Context, FDatasetName);
   if FIterateType = sistIterateRecords then
-    Context.Session.IterateRecords(DbN, DsN, FKeyPath, Iterator, True, 0)
+    Context.Session.IterateRecords(DbN, DsN, FKeyPath, Iterator, True, False, 0)
   else
     Context.Session.IterateFolders(DbN, DsN, FKeyPath, Iterator);
   ItVal := TkvDatasetIteratorValue.Create(Iterator, True);
@@ -3867,7 +3867,7 @@ var
   ResDb, ResDs, ResRec : String;
 begin
   FRecRef.ResolveKeys(Context, ResDb, ResDs, ResRec);
-  Result := Context.Session.ListOfKeys(ResDb, ResDs, ResRec, FRecurse);
+  Result := Context.Session.ListOfKeys(ResDb, ResDs, ResRec, FRecurse, False);
 end;
 
 

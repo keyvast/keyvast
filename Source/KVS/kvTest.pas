@@ -17,8 +17,9 @@ implementation
 
 {$IFDEF DEBUG}
 {$IFDEF TEST}
-{.DEFINE Profile}
-{.DEFINE TestMemSystem}
+{$DEFINE Profile}
+{$DEFINE TestMemSystem}
+{$DEFINE TestTranSystem}
 {$ASSERTIONS ON}
 {$ENDIF}
 {$ENDIF}
@@ -43,6 +44,10 @@ uses
   kvDiskSystem,
   {$IFDEF TestMemSystem}
   kvMemSystem,
+  {$ENDIF}
+  {$IFDEF TestTranSystem}
+  kvTransactionLog,
+  kvTransactionSystem,
   {$ENDIF}
   kvScriptNodes,
   kvScriptParser,
@@ -137,7 +142,7 @@ begin
   for I := 1 to 100000 do
     kvLevel1HashString('Hello world', True);
   T1 := LongWord(GetTickCount - T1);
-  Writeln('DiskHash:', T1 / 1000:0:2, 's');
+  Writeln('DiskHash:', T1 / 1000:0:4, 's');
   Writeln;
   {$ENDIF}{$ENDIF}
 
@@ -272,11 +277,16 @@ begin
   VI.Value := 0;
   Ds.AddRecord('testkey', VI);
   Assert(Ds.RecordExists('testkey'));
+  // get record
+  Va := Ds.GetRecord('testkey');
+  Assert(Va.TypeId = KV_Value_TypeId_Integer);
+  Assert(Va.AsString = '0');
+  Va.Free;
   // add records
   for I := 1 to TestN1 do
     Assert(not Ds.RecordExists(IntToStr(I)));
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
-  Writeln('Test_Dataset_NoFolders:');
+  Writeln('  Test_Dataset_NoFolders:');
   T1 := GetTickCount;
   {$ENDIF}{$ENDIF}
   for I := 1 to TestN1 do
@@ -286,23 +296,24 @@ begin
     end;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Add:', T1 / 1000:0:2, 's');
+  Writeln('    Add:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   // records exist
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := GetTickCount;
   {$ENDIF}{$ENDIF}
   for I := 1 to TestN1 do
-    Assert(Ds.RecordExists(IntToStr(I)));
+    try
+      Assert(Ds.RecordExists(IntToStr(I)));
+    except
+      Writeln(I);
+      raise;
+    end;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Locate:', T1 / 1000:0:2, 's');
+  Writeln('    Locate:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   // get records
-  Va := Ds.GetRecord('testkey');
-  Assert(Va.TypeId = KV_Value_TypeId_Integer);
-  Assert(Va.AsString = '0');
-  Va.Free;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := GetTickCount;
   {$ENDIF}{$ENDIF}
@@ -316,7 +327,49 @@ begin
     end;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Get:', T1 / 1000:0:2, 's');
+  Writeln('    Get:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // set records
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I);
+      VI.Value := I;
+      Ds.SetRecord(S, VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Set:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // delete records
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I);
+      Ds.DeleteRecord(S);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Delete:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // add records 2
+  for I := 1 to TestN1 do
+    Assert(not Ds.RecordExists(IntToStr(I)));
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      VI.Value := I;
+      Ds.AddRecord(IntToStr(I), VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Add2:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   // set record
   Va := Ds.GetRecord('102');
@@ -653,11 +706,14 @@ var
   Va, Va1 : AkvValue;
   I : Integer;
   S : String;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 : Word32;
+  {$ENDIF}{$ENDIF}
 const
   TestN1 = 100000;
 begin
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
-  Writeln('Test_Dataset_Folders:');
+  Writeln('  Test_Dataset_Folders:');
   {$ENDIF}{$ENDIF}
 
   VI := TkvIntegerValue.Create;
@@ -668,19 +724,36 @@ begin
       S := IntToStr(I div 100) + '/' + IntToStr(I);
       Assert(not Ds.RecordExists(S));
     end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
   for I := 1 to TestN1 do
     begin
       VI.Value := I;
       S := IntToStr(I div 100) + '/' + IntToStr(I);
       Ds.AddRecord(S, VI);
     end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Add:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
   // records exist
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
   for I := 1 to TestN1 do
     begin
       S := IntToStr(I div 100) + '/' + IntToStr(I);
       Assert(Ds.RecordExists(S));
     end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Exists:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
   // get records
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
   for I := 1 to TestN1 do
     begin
       S := IntToStr(I div 100) + '/' + IntToStr(I);
@@ -689,21 +762,88 @@ begin
       Assert(Va.AsString = IntToStr(I));
       Va.Free;
     end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Get:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // get records
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      VI.Value := I;
+      Ds.SetRecord(S, VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Set:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
   // delete records
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
   for I := 1 to TestN1 do
     begin
       S := IntToStr(I div 100) + '/' + IntToStr(I);
       Ds.DeleteRecord(S);
       Assert(not Ds.RecordExists(S));
     end;
-  // delete folders
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    DeleteRec:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // add 2
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      VI.Value := I;
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Ds.AddRecord(S, VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Add2:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // delete folders 2
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
   for I := 0 to TestN1 div 100 do
     begin
       S := IntToStr(I);
-      Assert(Ds.FolderExists(S));
       Ds.DeleteRecord(S);
-      Assert(not Ds.FolderExists(S));
     end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    DeleteFolder:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // add 3
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  for I := 1 to TestN1 do
+    begin
+      VI.Value := I;
+      S := IntToStr(I div 100) + '/' + IntToStr(I);
+      Ds.AddRecord(S, VI);
+    end;
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    Add3:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
+  // delete folders 3
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := GetTickCount;
+  {$ENDIF}{$ENDIF}
+  Ds.DeleteFolderRecords('/');
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  T1 := LongWord(GetTickCount - T1);
+  Writeln('    DeleteRoot:', T1 / 1000:0:3, 's');
+  {$ENDIF}{$ENDIF}
   // folders
   Ds.AddRecordString('abc/001', '1');
   Ds.AddRecordString('abc/002', '2');
@@ -1031,7 +1171,7 @@ begin
     end;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Add:', T1 / 1000:0:4, 's');
+  Writeln('  Add:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   // records exist
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
@@ -1041,7 +1181,7 @@ begin
     Assert(Ds.RecordExists(IntToStr(I)));
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Locate:', T1 / 1000:0:4, 's');
+  Writeln('  Locate:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   // get records
   Va := Ds.GetRecord('mtestkey');
@@ -1061,7 +1201,7 @@ begin
     end;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Get:', T1 / 1000:0:4, 's');
+  Writeln('  Get:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   // delete records
   Ds.DeleteRecord('mtestkey');
@@ -1076,7 +1216,7 @@ begin
     end;
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
   T1 := LongWord(GetTickCount - T1);
-  Writeln('Delete:', T1 / 1000:0:4, 's');
+  Writeln('  Delete:', T1 / 1000:0:3, 's');
   {$ENDIF}{$ENDIF}
   VI.Free;
 
@@ -1500,7 +1640,7 @@ const
 
 begin
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
-  Writeln('Test_Script_Database:');
+  Writeln('  Test_Script_Database:');
   {$ENDIF}{$ENDIF}
 
   P := TkvScriptParser.Create;
@@ -1856,19 +1996,19 @@ begin
     for I := 1 to TestN1 do
       Exec('EVAL 1', '1');
     T1 := LongWord(GetTickCount - T1);
-    Writeln('Eval:', T1 / 1000:0:2, 's');
+    Writeln('    Eval:', T1 / 1000:0:3, 's');
 
     T1 := GetTickCount;
     for I := 1 to TestN1 do
       Exec('INSERT ' + IntToStr(I) + ' ' + IntToStr(I));
     T1 := LongWord(GetTickCount - T1);
-    Writeln('Add:', T1 / 1000:0:2, 's');
+    Writeln('    Add:', T1 / 1000:0:3, 's');
 
     T1 := GetTickCount;
     for I := 1 to TestN1 do
       Exec('SELECT ' + IntToStr(I), IntToStr(I));
     T1 := LongWord(GetTickCount - T1);
-    Writeln('Get:', T1 / 1000:0:2, 's');
+    Writeln('    Get:', T1 / 1000:0:3, 's');
     {$ENDIF}{$ENDIF}
 
     Exec('CREATE PROCEDURE proc1(@par1, @par2) BEGIN RETURN @par1 + @par2 END');
@@ -2075,7 +2215,7 @@ var
 
 begin
   {$IFDEF Profile}{$IFDEF MSWINDOWS}
-  Writeln('Test_Script_Folders:');
+  Writeln('  Test_Script_Folders:');
   {$ENDIF}{$ENDIF}
 
   P := TkvScriptParser.Create;
@@ -2495,8 +2635,12 @@ begin
         ValA.Free;
         Assert(not Client.IterateNext(Handle, Key));
 
-        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True);
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True, False);
         Assert(ValA.AsString = '{1:null}');
+        ValA.Free;
+
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True, True);
+        Assert(ValA.AsString = '{1:1}');
         ValA.Free;
 
         ExecBinKql('INSERT 2 2', '');
@@ -2520,8 +2664,16 @@ begin
         Assert(Client.IterateGetTimestamp(Handle) <> 0);
         Assert(not Client.IterateNext(Handle, Key));
 
-        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True);
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True, False);
         Assert(ValA.AsString = '{3:null,2:null,1:null}');
+        ValA.Free;
+
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', False, False);
+        Assert(ValA.AsString = '{3:null,2:null,1:null}');
+        ValA.Free;
+
+        ValA := Client.ListOfKeys('TESTDB', 'testds', '', True, True);
+        Assert(ValA.AsString = '{3:3,2:2,1:1}');
         ValA.Free;
 
         Assert(not Client.Exists('TESTDB', 'testds', '4'));
@@ -2590,6 +2742,39 @@ begin
   end;
 end;
 
+{$IFDEF TestTranSystem}
+procedure Test_TransactionLog;
+var
+  Log : TkvTransactionLog;
+  LogDs : TkvMemDataset;
+begin
+  LogDs := TkvMemDataset.Create('logds', True);
+  Log := TkvTransactionLog.Create(True, LogDs, True);
+
+  ////
+
+  FreeAndNil(Log);
+  FreeAndNil(LogDs);
+end;
+
+procedure Test_TransactionDataset;
+var
+  LogDs : TkvMemDataset;
+  Ds : TkvMemDataset;
+  TraDs : TkvTransactionDataset;
+begin
+  LogDs := TkvMemDataset.Create('logds', True);
+  Ds := TkvMemDataset.Create('ds', True);
+  TraDs := TkvTransactionDataset.Create(Ds, LogDs);
+
+  ////
+
+  FreeAndNil(TraDs);
+  FreeAndNil(Ds);
+  FreeAndNil(LogDs);
+end;
+{$ENDIF}
+
 procedure Test;
 begin
   Test_HashListHashString;
@@ -2616,6 +2801,10 @@ begin
   Test_Script_Folders_Mem;
   {$ENDIF}
   Test_Datasys;
+  {$IFDEF TestTranSystem}
+  Test_TransactionLog;
+  Test_TransactionDataset;
+  {$ENDIF}
 end;
 
 

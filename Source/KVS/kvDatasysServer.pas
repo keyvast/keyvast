@@ -544,7 +544,8 @@ begin
   if KeyCmdS = 'listofkeys' then
     begin
       Val := Session.ListOfKeys(DbS, DsS, KeyS,
-          RequestDict.GetValueAsBoolean('recurse'));
+          RequestDict.GetValueAsBoolean('recurse'),
+          RequestDict.GetValueAsBoolean('rectimestamps'));
       ResponseDict.Add('val', Val);
     end
   else
@@ -594,7 +595,7 @@ begin
   New(Iter);
   try
     Iter.Magic := DatasysServer_IteratorMagic;
-    IterR := Session.IterateRecords(DbS, DsS, PathS, Iter^.Iter, True, 0);
+    IterR := Session.IterateRecords(DbS, DsS, PathS, Iter^.Iter, True, False, 0);
   except
     Dispose(Iter);
     raise;
