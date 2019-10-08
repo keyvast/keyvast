@@ -19,6 +19,15 @@ function kvLevelNHash(const PrevLevelHash: UInt64): UInt64;
 
 
 
+{$IFDEF DEBUG}
+{$IFDEF TEST}
+var
+  TestCollisions : Boolean = False;
+{$ENDIF}
+{$ENDIF}
+
+
+
 implementation
 
 uses
@@ -89,6 +98,7 @@ begin
 
       F := D xor (D shl 16) xor (D shl 32) xor (D shl 48);
       H := H xor F;
+
       F := L xor (UInt64(I) shl 18) xor (UInt64(L) shl 28) xor (UInt64(I) shl 31);
       H := H xor F;
 
@@ -108,6 +118,14 @@ begin
 
       H := (UInt64(T1) shl 32) or T2;
     end;
+
+  {$IFDEF DEBUG}
+  {$IFDEF TEST}
+  if TestCollisions then
+    if (S = '100') or (S = '101') or (S = '102') then
+      H := $5A1F7301B3E05962;
+  {$ENDIF}
+  {$ENDIF}
 
   Result := H;
 end;

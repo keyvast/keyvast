@@ -18,8 +18,8 @@ implementation
 {$IFDEF DEBUG}
 {$IFDEF TEST}
 {$DEFINE Profile}
-{$DEFINE TestMemSystem}
-{$DEFINE TestTranSystem}
+{.DEFINE TestMemSystem}
+{.DEFINE TestTranSystem}
 {$ASSERTIONS ON}
 {$ENDIF}
 {$ENDIF}
@@ -2777,6 +2777,7 @@ end;
 
 procedure Test;
 begin
+  TestCollisions := False;
   Test_HashListHashString;
   Test_HashList;
   Test_VarWord32;
@@ -2805,6 +2806,11 @@ begin
   Test_TransactionLog;
   Test_TransactionDataset;
   {$ENDIF}
+  TestCollisions := True;
+  Test_DiskSystem(128, 1024);
+  Test_DiskSystem_Folders;
+  Test_Script_Database_Disk;
+  Test_Script_Folders_Disk;
 end;
 
 
