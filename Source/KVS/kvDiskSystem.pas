@@ -38,6 +38,7 @@
 { 2019/10/05  0.33  Dataset CopyFrom. }
 { 2019/10/08  0.34  Release KeyValueWithHashCollision children to DeletedSlots when folder deleted. }
 { 2019/10/08  0.35  Add to folder with KeyValueWithHashCollision. }
+{ 2019/10/09  0.36  Exception handling for Add to release disk records allocated to unwritten HashRec. }
 
 {$INCLUDE kvInclude.inc}
 
@@ -123,7 +124,10 @@ type
     procedure HashRecSetKey(var HashRec: TkvHashFileRecord;
               const AKey: String; const AKeyHash: UInt64);
 
+    procedure HashRecReleaseKey(var HashRec: TkvHashFileRecord);
     procedure HashRecReleaseValue(var HashRec: TkvHashFileRecord);
+    procedure HashRecReleaseKeyValue(var HashRec: TkvHashFileRecord);
+
     procedure HashRecSetValue(var HashRec: TkvHashFileRecord;
               const AValue: AkvValue);
 
@@ -788,6 +792,15 @@ begin
     HashRec.KeyLongChainIndex := KV_BlobFile_InvalidIndex;
 end;
 
+procedure TkvDataSet.HashRecReleaseKey(var HashRec: TkvHashFileRecord);
+begin
+  if HashRec.KeyLongChainIndex <> KV_BlobFile_InvalidIndex then
+    begin
+      FKeyFile.ReleaseChain(HashRec.KeyLongChainIndex);
+      HashRec.KeyLongChainIndex := KV_BlobFile_InvalidIndex;
+    end;
+end;
+
 procedure TkvDataSet.HashRecReleaseValue(var HashRec: TkvHashFileRecord);
 begin
   if HashRec.ValueType = hfrvtLong then
@@ -799,6 +812,12 @@ begin
         end;
       HashRec.ValueType := hfrvtNone;
     end;
+end;
+
+procedure TkvDataSet.HashRecReleaseKeyValue(var HashRec: TkvHashFileRecord);
+begin
+  HashRecReleaseKey(HashRec);
+  HashRecReleaseValue(HashRec);
 end;
 
 // Sets value in HashRec, allocating chain in valuefile if required
@@ -895,50 +914,59 @@ begin
     raise EkvDiskObject.Create('Hash failure: Hash collision');
 
   BaseIdx := FHashFile.AllocateSlotRecords;
+  try
+    kvInitHashFileRecord(ParentHashRec);
+    ParentHashRec.RecordType := hfrtParentSlot;
+    ParentHashRec.ChildSlotRecordIndex := BaseIdx;
 
-  kvInitHashFileRecord(ParentHashRec);
-  ParentHashRec.RecordType := hfrtParentSlot;
-  ParentHashRec.ChildSlotRecordIndex := BaseIdx;
+    // Calculate hash for this level
+    Key1Hash := kvLevelNHash(Key1Hash);
+    Key2Hash := kvLevelNHash(Key2Hash);
 
-  // Calculate hash for this level
-  Key1Hash := kvLevelNHash(Key1Hash);
-  Key2Hash := kvLevelNHash(Key2Hash);
+    HashRec.KeyHash := Key2Hash;
 
-  HashRec.KeyHash := Key2Hash;
-
-  Slt1 := Key1Hash mod KV_HashFile_LevelSlotCount;
-  Slt2 := Key2Hash mod KV_HashFile_LevelSlotCount;
-  if Slt1 = Slt2 then
-    begin
-      // Slot collision on this level, recurse down a level
-      RecIdx := BaseIdx + Slt1;
-      RecursiveHashRecSlotCollisionResolve(BaseIdx, RecIdx, HashRec,
-          AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx, ACollisionLevel + 1, ATimestampNow);
-    end
-  else
-    begin
-      // Save existing record in new level/slot without a slot collision
-      FHashFile.SaveRecord(BaseIdx + Slt2, HashRec);
-      if HashRec.RecordType = hfrtKeyValueWithHashCollision then
-        begin
-          // Update all hash collision children's level hash with parent's level hash
-          ColBaseIdx := HashRec.ChildSlotRecordIndex;
-          for I := 0 to KV_HashFile_LevelSlotCount - 1 do
-            begin
-              ColIdx := ColBaseIdx + Word32(I);
-              FHashFile.LoadRecord(ColIdx, ColRec);
-              if ColRec.RecordType in [hfrtKeyValue] then
-                begin
-                  ColRec.KeyHash := HashRec.KeyHash;
-                  FHashFile.SaveRecord(ColIdx, ColRec);
-                end;
-            end;
+    Slt1 := Key1Hash mod KV_HashFile_LevelSlotCount;
+    Slt2 := Key2Hash mod KV_HashFile_LevelSlotCount;
+    if Slt1 = Slt2 then
+      begin
+        // Slot collision on this level, recurse down a level
+        RecIdx := BaseIdx + Slt1;
+        RecursiveHashRecSlotCollisionResolve(BaseIdx, RecIdx, HashRec,
+            AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx, ACollisionLevel + 1, ATimestampNow);
+      end
+    else
+      begin
+        // Save existing record in new level/slot without a slot collision
+        FHashFile.SaveRecord(BaseIdx + Slt2, HashRec);
+        if HashRec.RecordType = hfrtKeyValueWithHashCollision then
+          begin
+            // Update all hash collision children's level hash with parent's level hash
+            ColBaseIdx := HashRec.ChildSlotRecordIndex;
+            for I := 0 to KV_HashFile_LevelSlotCount - 1 do
+              begin
+                ColIdx := ColBaseIdx + Word32(I);
+                FHashFile.LoadRecord(ColIdx, ColRec);
+                if ColRec.RecordType in [hfrtKeyValue] then
+                  begin
+                    ColRec.KeyHash := HashRec.KeyHash;
+                    FHashFile.SaveRecord(ColIdx, ColRec);
+                  end;
+              end;
+          end;
+        // Save new record
+        HashRecInitKeyValue(NewHashRec, AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx);
+        try
+          NewHashRec.Timestamp := ATimestampNow;
+          FHashFile.SaveRecord(BaseIdx + Slt1, NewHashRec);
+        except
+          HashRecReleaseKeyValue(NewHashRec);
+          raise;
         end;
-      // Save new record
-      HashRecInitKeyValue(NewHashRec, AKey, Key1Hash, AValue, AIsFolder, FolderBaseIdx);
-      NewHashRec.Timestamp := ATimestampNow;
-      FHashFile.SaveRecord(BaseIdx + Slt1, NewHashRec);
-    end;
+      end;
+  except
+    FHashFile.AddDeletedSlots(BaseIdx);
+    raise;
+  end;
   // Save parent record
   FHashFile.SaveRecord(HashRecIdx, ParentHashRec);
 end;
@@ -1014,11 +1042,12 @@ begin
               // Change key/value entry to key/value-with-hash-collision entry
               HashRec.RecordType := hfrtKeyValueWithHashCollision;
               HashRec.ChildSlotRecordIndex := FHashFile.AllocateSlotRecords;
-              FHashFile.SaveRecord(HashRecI, HashRec);
               // Save new key/value to child slot 0
               HashRecInitKeyValue(NewHashRec, AKey, Hsh, AValue, AIsFolder, FolderBaseIdx);
               NewHashRec.Timestamp := ATimestamp;
               FHashFile.SaveRecord(HashRec.ChildSlotRecordIndex, NewHashRec);
+              // Save parent after child saved
+              FHashFile.SaveRecord(HashRecI, HashRec);
             end
           else
             HashRecSlotCollisionResolve(HashRecBaseI, HashRecI, HashRec,
@@ -1334,8 +1363,6 @@ var
 begin
   if AKey = '' then
     raise EkvDiskObject.Create('Invalid key');
-  if AKey = '101/10101' then
-    HashRecIdx := 1;
   Result := LocateRecord(AKey, HashRecIdx, HashRec);
 end;
 
@@ -1953,11 +1980,6 @@ end;
 procedure TkvDataset.InternalDeleteKeyValue(const HashRecIdx: Word64;
           var HashRec: TkvHashFileRecord);
 begin
-  if HashRec.KeyLongChainIndex <> KV_BlobFile_InvalidIndex then
-    begin
-      FKeyFile.ReleaseChain(HashRec.KeyLongChainIndex);
-      HashRec.KeyLongChainIndex := KV_BlobFile_InvalidIndex;
-    end;
   if HashRec.ValueType = hfrvtFolder then
     begin
       Assert(HashRec.ValueFolderBaseIndex <> KV_HashFile_InvalidIndex);
@@ -1967,6 +1989,7 @@ begin
     end
   else
     HashRecReleaseValue(HashRec);
+  HashRecReleaseKey(HashRec);
 end;
 
 procedure TkvDataset.InternalDeleteChildren(const BaseIndex: Word64; const AUpdateRecords: Boolean);
@@ -1995,6 +2018,7 @@ begin
               begin
                 InternalDeleteChildren(ChildRecI, False);
                 FHashFile.AddDeletedSlots(ChildRecI);
+                ChildHashRec.ChildSlotRecordIndex := KV_HashFile_InvalidIndex;
               end;
             InternalDeleteKeyValue(RecI, ChildHashRec);
             DelRec := True;
@@ -2005,6 +2029,7 @@ begin
             Assert(ChildRecI <> KV_HashFile_InvalidIndex);
             InternalDeleteChildren(ChildRecI, False);
             FHashFile.AddDeletedSlots(ChildRecI);
+            ChildHashRec.ChildSlotRecordIndex := KV_HashFile_InvalidIndex;
             DelRec := True;
           end;
       end;

@@ -11,7 +11,15 @@ unit kvTest;
 
 interface
 
+
+
+{$IFDEF DEBUG}
+{$IFDEF TEST}
 procedure Test;
+{$ENDIF}
+{$ENDIF}
+
+
 
 implementation
 
@@ -21,8 +29,6 @@ implementation
 {.DEFINE TestMemSystem}
 {.DEFINE TestTranSystem}
 {$ASSERTIONS ON}
-{$ENDIF}
-{$ENDIF}
 
 uses
   {$IFDEF POSIX}
@@ -2749,7 +2755,7 @@ var
   LogDs : TkvMemDataset;
 begin
   LogDs := TkvMemDataset.Create('logds', True);
-  Log := TkvTransactionLog.Create(True, LogDs, True);
+  Log := TkvTransactionLog.Create(True, LogDs);
 
   ////
 
@@ -2806,12 +2812,18 @@ begin
   Test_TransactionLog;
   Test_TransactionDataset;
   {$ENDIF}
+  {$IFDEF Profile}{$IFDEF MSWINDOWS}
+  Writeln('Test disk hash collisions:');
+  Writeln;
+  {$ENDIF}{$ENDIF}
   TestCollisions := True;
   Test_DiskSystem(128, 1024);
   Test_DiskSystem_Folders;
   Test_Script_Database_Disk;
   Test_Script_Folders_Disk;
 end;
+{$ENDIF}
+{$ENDIF}
 
 
 
